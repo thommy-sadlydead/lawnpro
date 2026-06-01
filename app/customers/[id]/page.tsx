@@ -34,6 +34,15 @@ export default function CustomerDetailPage() {
   const [confirmDeleteJobId, setConfirmDeleteJobId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'history' | 'invoices'>('history')
 
+  // Inline payroll editing
+  const [editingPayPerMow, setEditingPayPerMow] = useState(false)
+  const [payPerMowInput, setPayPerMowInput] = useState('')
+  const [savingPayPerMow, setSavingPayPerMow] = useState(false)
+
+  const [editingPrice, setEditingPrice] = useState(false)
+  const [priceInput, setPriceInput] = useState('')
+  const [savingPrice, setSavingPrice] = useState(false)
+
   useEffect(() => {
     loadData()
   }, [id])
@@ -81,6 +90,37 @@ export default function CustomerDetailPage() {
     toast.success('Customer updated')
     setEditOpen(false)
     loadData()
+  }
+
+  async function savePrice() {
+    if (!customer) return
+    setSavingPrice(true)
+    const value = priceInput.trim() === '' ? null : parseFloat(priceInput)
+    const { error } = await supabase
+      .from('customers')
+      .update({ price: value })
+      .eq('id', customer.id)
+    setSavingPrice(false)
+    if (error) { toast.error('Failed to save'); return }
+    toast.success('Job price updated')
+    setEditingPrice(false)
+    setCustomer((c) => c ? { ...c, price: value } : c)
+  }
+
+  async function savePayPerMow() {
+    if (!customer) return
+    setSavingPayPerMow(true)
+    const value = payPerMowInput.trim() === '' ? null : parseFloat(payPerMowInput)
+    const { error } = await supabase
+      .from('customers')
+      .update({ employee_pay_per_mow: value })
+      .eq('id', customer.id)
+    setSavingPayPerMow(false)
+    if (error) { toast.error('Failed to save'); return }
+    toast.success('Pay rate updated')
+    setEditingPayPerMow(false)
+    // Optimistically update local state
+    setCustomer((c) => c ? { ...c, employee_pay_per_mow: value } : c)
   }
 
   async function deleteCustomer() {
@@ -246,6 +286,205 @@ export default function CustomerDetailPage() {
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1"><FileText size={12} /> Invoices</span>
                 <span className="text-sm font-bold text-gray-900 dark:text-white">{invoices.length}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Payroll Rules ─────────────────────────────────────────────── */}
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+          <div className="px-4 pt-4 pb-3 border-b border-gray-100 dark:border-gray-800">
+            <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+              Payroll Rules
+            </h3>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+              Tap any value to edit — rules update instantly
+            </p>
+          </div>
+
+          <div className="p-4 space-y-4">
+            {/* ── Two editable fields side by side ───────────────────── */}
+            <div className="grid grid-cols-2 gap-3">
+              {/* Job Price */}
+              <div className="bg-gray-50 dark:bg-gray-800/60 rounded-xl border border-gray-200 dark:border-gray-700 p-3">
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Job Price</p>
+                {editingPrice ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-1">
+                      <span className="text-sm text-gray-400">$</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        autoFocus
+                        value={priceInput}
+                        onChange={(e) => setPriceInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') savePrice()
+                          if (e.key === 'Escape') setEditingPrice(false)
+                        }}
+                        placeholder="0.00"
+                        className="w-full text-base font-bold text-right px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500"
+                      />
+                    </div>
+                    <div className="flex gap-1.5">
+                      <button
+                        onClick={savePrice}
+                        disabled={savingPrice}
+                        className="flex-1 py-1 text-xs font-semibold bg-green-600 hover:bg-green-500 text-white rounded-lg transition-colors disabled:opacity-50"
+                      >
+                        {savingPrice ? '…' : 'Save'}
+                      </button>
+                      <button
+                        onClick={() => setEditingPrice(false)}
+                        className="flex-1 py-1 text-xs bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => { setPriceInput(customer.price?.toString() ?? ''); setEditingPrice(true) }}
+                    className="w-full flex items-center justify-between group"
+                  >
+                    <span className={`text-xl font-bold ${customer.price != null ? 'text-green-600 dark:text-green-400' : 'text-gray-300 dark:text-gray-600'}`}>
+                      {customer.price != null ? formatCurrency(customer.price) : '—'}
+                    </span>
+                    <span className="text-[10px] text-gray-400 group-hover:text-green-600 dark:group-hover:text-green-400 border border-gray-200 dark:border-gray-700 group-hover:border-green-400 px-1.5 py-0.5 rounded-md transition-colors flex items-center gap-0.5">
+                      <Edit2 size={9} /> Edit
+                    </span>
+                  </button>
+                )}
+              </div>
+
+              {/* Employee Pay Per Mow */}
+              <div className="bg-gray-50 dark:bg-gray-800/60 rounded-xl border border-gray-200 dark:border-gray-700 p-3">
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Employee Pay/Mow</p>
+                {editingPayPerMow ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-1">
+                      <span className="text-sm text-gray-400">$</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        autoFocus
+                        value={payPerMowInput}
+                        onChange={(e) => setPayPerMowInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') savePayPerMow()
+                          if (e.key === 'Escape') setEditingPayPerMow(false)
+                        }}
+                        placeholder="0.00"
+                        className="w-full text-base font-bold text-right px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      />
+                    </div>
+                    <div className="flex gap-1.5">
+                      <button
+                        onClick={savePayPerMow}
+                        disabled={savingPayPerMow}
+                        className="flex-1 py-1 text-xs font-semibold bg-green-600 hover:bg-green-500 text-white rounded-lg transition-colors disabled:opacity-50"
+                      >
+                        {savingPayPerMow ? '…' : 'Save'}
+                      </button>
+                      <button
+                        onClick={() => setEditingPayPerMow(false)}
+                        className="flex-1 py-1 text-xs bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => { setPayPerMowInput(customer.employee_pay_per_mow?.toString() ?? ''); setEditingPayPerMow(true) }}
+                    className="w-full flex items-center justify-between group"
+                  >
+                    <span className={`text-xl font-bold ${customer.employee_pay_per_mow != null ? 'text-purple-600 dark:text-purple-400' : 'text-gray-300 dark:text-gray-600'}`}>
+                      {customer.employee_pay_per_mow != null ? formatCurrency(customer.employee_pay_per_mow) : '—'}
+                    </span>
+                    <span className="text-[10px] text-gray-400 group-hover:text-purple-600 dark:group-hover:text-purple-400 border border-gray-200 dark:border-gray-700 group-hover:border-purple-400 px-1.5 py-0.5 rounded-md transition-colors flex items-center gap-0.5">
+                      <Edit2 size={9} /> Edit
+                    </span>
+                  </button>
+                )}
+                <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1.5">Used in Rule 3 only</p>
+              </div>
+            </div>
+
+            {/* ── Rule breakdown (live, driven by values above) ───────── */}
+            <div className="space-y-2">
+              {/* Rule 1 */}
+              <div className="flex items-start gap-3 p-3 rounded-xl bg-green-50 dark:bg-green-900/15 border border-green-100 dark:border-green-900/40">
+                <span className="flex-shrink-0 text-[10px] font-bold bg-green-600 text-white px-1.5 py-0.5 rounded-full mt-0.5">R1</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-green-800 dark:text-green-300">Christian works alone</p>
+                  <p className="text-xs text-green-700 dark:text-green-400 mt-0.5">
+                    Christian receives{' '}
+                    <strong>{customer.price != null ? formatCurrency(customer.price) : '—'}</strong>
+                    {customer.price != null ? ' (100%)' : ' — set job price to calculate'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Rule 2 */}
+              <div className="flex items-start gap-3 p-3 rounded-xl bg-blue-50 dark:bg-blue-900/15 border border-blue-100 dark:border-blue-900/40">
+                <span className="flex-shrink-0 text-[10px] font-bold bg-blue-600 text-white px-1.5 py-0.5 rounded-full mt-0.5">R2</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-blue-800 dark:text-blue-300">Employee alone — no Christian</p>
+                  {customer.price != null ? (
+                    <p className="text-xs text-blue-700 dark:text-blue-400 mt-0.5">
+                      Employee gets <strong>{formatCurrency(customer.price * 0.5)}</strong>
+                      {' '}· Christian gets <strong>{formatCurrency(customer.price * 0.5)}</strong>
+                      {' '}(50 / 50)
+                    </p>
+                  ) : (
+                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">50 / 50 split — set job price to see amounts</p>
+                  )}
+                  <p className="text-[10px] text-blue-400 dark:text-blue-500 mt-1">Employee Pay/Mow ignored for this rule</p>
+                </div>
+              </div>
+
+              {/* Rule 3 */}
+              <div className="flex items-start gap-3 p-3 rounded-xl bg-purple-50 dark:bg-purple-900/15 border border-purple-100 dark:border-purple-900/40">
+                <span className="flex-shrink-0 text-[10px] font-bold bg-purple-600 text-white px-1.5 py-0.5 rounded-full mt-0.5">R3</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-purple-800 dark:text-purple-300">Christian + employees</p>
+                  {customer.price != null && customer.employee_pay_per_mow != null ? (
+                    <div className="mt-1 space-y-1">
+                      <div className="flex items-center justify-between text-xs text-purple-700 dark:text-purple-400">
+                        <span>+ 1 employee</span>
+                        <span>
+                          <strong>{formatCurrency(customer.employee_pay_per_mow)}</strong> to employee
+                          {' '}· <strong>{formatCurrency(customer.price - customer.employee_pay_per_mow)}</strong> to Christian
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs text-purple-700 dark:text-purple-400">
+                        <span>+ 2 employees</span>
+                        <span>
+                          <strong>{formatCurrency(customer.employee_pay_per_mow / 2)}</strong> each
+                          {' '}· <strong>{formatCurrency(customer.price - customer.employee_pay_per_mow)}</strong> to Christian
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs text-purple-700 dark:text-purple-400">
+                        <span>+ 3 employees</span>
+                        <span>
+                          <strong>{formatCurrency(customer.employee_pay_per_mow / 3)}</strong> each
+                          {' '}· <strong>{formatCurrency(customer.price - customer.employee_pay_per_mow)}</strong> to Christian
+                        </span>
+                      </div>
+                    </div>
+                  ) : customer.employee_pay_per_mow == null && customer.price != null ? (
+                    <p className="text-xs text-purple-600 dark:text-purple-400 mt-0.5">
+                      Set <strong>Employee Pay/Mow</strong> above to calculate
+                    </p>
+                  ) : customer.price == null ? (
+                    <p className="text-xs text-purple-600 dark:text-purple-400 mt-0.5">
+                      Set <strong>Job Price</strong> above to calculate
+                    </p>
+                  ) : null}
+                </div>
               </div>
             </div>
           </div>
