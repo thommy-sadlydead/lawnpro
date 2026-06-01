@@ -14,6 +14,8 @@ export interface Customer {
   service_notes: string | null
   gate_code: string | null
   price: number | null
+  /** Fixed dollar amount paid to non-owner employees per mow (used in Rule 3). */
+  employee_pay_per_mow: number | null
   service_frequency: ServiceFrequency
   is_active: boolean
   general_notes: string | null
@@ -27,6 +29,8 @@ export interface Employee {
   phone: string | null
   email: string | null
   is_active: boolean
+  /** True for the business owner (Christian). Drives payroll rule selection. */
+  is_owner: boolean
   default_payout: number | null
   notes: string | null
   created_at: string
@@ -48,6 +52,16 @@ export interface Schedule {
   employee?: Employee
 }
 
+export interface JobCrew {
+  id: string
+  job_id: string
+  employee_id: string
+  payout_amount: number | null
+  created_at: string
+  // Joined
+  employee?: Pick<Employee, 'id' | 'name' | 'default_payout'>
+}
+
 export interface Job {
   id: string
   customer_id: string
@@ -56,7 +70,9 @@ export interface Job {
   scheduled_date: string
   status: JobStatus
   completed_at: string | null
+  /** Primary/first crew member — kept for backward compat */
   completed_by_id: string | null
+  /** Total payout for the job (sum of all crew payouts) */
   payout_amount: number | null
   notes: string | null
   employee_notes: string | null
@@ -66,9 +82,11 @@ export interface Job {
   original_date: string | null
   created_at: string
   updated_at: string
+  // Joined
   customer?: Customer
   employee?: Employee
   completed_by?: Employee
+  crew?: JobCrew[]
 }
 
 export interface Invoice {

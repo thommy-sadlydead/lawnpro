@@ -4,13 +4,14 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Search, Filter, CheckCircle2, Clock, X, Cloud } from 'lucide-react'
+import { Search, CheckCircle2, Clock, Cloud, Trash2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { StatusBadge } from '@/components/ui/Badge'
 import { MobileHeader } from '@/components/nav/MobileNav'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import type { Job } from '@/types'
-import { format, subDays, addDays } from 'date-fns'
+import { format, subDays } from 'date-fns'
+import { toast } from 'sonner'
 
 type StatusFilter = 'all' | 'pending' | 'completed' | 'skipped' | 'cancelled'
 type DateFilter = 'today' | 'week' | 'month' | 'all'
@@ -22,6 +23,8 @@ export default function JobsPage() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [dateFilter, setDateFilter] = useState<DateFilter>('week')
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   useEffect(() => {
     loadJobs()
@@ -48,6 +51,16 @@ export default function JobsPage() {
     const { data } = await query.limit(100)
     setJobs((data ?? []) as Job[])
     setLoading(false)
+  }
+
+  async function deleteJob(jobId: string) {
+    setDeletingId(jobId)
+    const { error } = await createClient().from('jobs').delete().eq('id', jobId)
+    setDeletingId(null)
+    setConfirmDeleteId(null)
+    if (error) { toast.error('Failed to delete job'); return }
+    toast.success('Job deleted')
+    setJobs((prev) => prev.filter((j) => j.id !== jobId))
   }
 
   const filtered = jobs.filter((j) => {
@@ -152,36 +165,75 @@ export default function JobsPage() {
           filtered.map((job) => {
             const customer = (job as Job & { customer?: { name: string; address?: string; city?: string } }).customer
             const employee = (job as Job & { employee?: { name: string } }).employee
+            const isConfirming = confirmDeleteId === job.id
+            const isDeleting = deletingId === job.id
+
             return (
-              <Link
-                key={job.id}
-                href={`/jobs/${job.id}`}
-                className="flex items-center gap-3 p-4 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 hover:border-green-400 dark:hover:border-green-600 hover:shadow-sm transition-all"
-              >
-                <div className={`w-2 h-2 rounded-full flex-shrink-0 mt-0.5 ${
-                  job.status === 'completed' ? 'bg-green-500' :
-                  job.status === 'pending' ? 'bg-yellow-500' :
-                  job.status === 'cancelled' ? 'bg-red-500' : 'bg-gray-400'
-                }`} />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="font-semibold text-gray-900 dark:text-white truncate">{customer?.name}</p>
-                    {job.is_weather_delayed && <Cloud size={12} className="text-blue-500 flex-shrink-0" />}
+              <div key={job.id} className="relative">
+                {/* Inline delete confirmation overlay */}
+                {isConfirming && (
+                  <div className="absolute inset-0 z-10 flex items-center justify-between gap-3 px-4 bg-red-50 dark:bg-red-900/30 border-2 border-red-400 dark:border-red-600 rounded-xl">
+                    <p className="text-sm font-medium text-red-700 dark:text-red-300 min-w-0 truncate">
+                      Delete {customer?.name} — {formatDate(job.scheduled_date)}?
+                    </p>
+                    <div className="flex gap-2 flex-shrink-0">
+                      <button
+                        onClick={() => setConfirmDeleteId(null)}
+                        className="px-3 py-1.5 text-xs font-medium rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => deleteJob(job.id)}
+                        disabled={isDeleting}
+                        className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+                      >
+                        {isDeleting ? '…' : 'Delete'}
+                      </button>
+                    </div>
                   </div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                    {formatDate(job.scheduled_date)} · {employee?.name ?? 'Unassigned'}
-                  </p>
-                  {customer?.address && (
-                    <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{customer.address}</p>
-                  )}
+                )}
+
+                <div className={`flex items-center gap-3 p-4 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 transition-all ${isConfirming ? 'opacity-0' : 'hover:border-green-400 dark:hover:border-green-600 hover:shadow-sm'}`}>
+                  {/* Status dot */}
+                  <div className={`w-2 h-2 rounded-full flex-shrink-0 mt-0.5 ${
+                    job.status === 'completed' ? 'bg-green-500' :
+                    job.status === 'pending' ? 'bg-yellow-500' :
+                    job.status === 'cancelled' ? 'bg-red-500' : 'bg-gray-400'
+                  }`} />
+
+                  {/* Clickable area → job detail */}
+                  <Link href={`/jobs/${job.id}`} className="flex-1 min-w-0 flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="font-semibold text-gray-900 dark:text-white truncate">{customer?.name}</p>
+                        {job.is_weather_delayed && <Cloud size={12} className="text-blue-500 flex-shrink-0" />}
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                        {formatDate(job.scheduled_date)} · {employee?.name ?? 'Unassigned'}
+                      </p>
+                      {customer?.address && (
+                        <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{customer.address}</p>
+                      )}
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <StatusBadge status={job.status} />
+                      {job.payout_amount && (
+                        <p className="text-xs font-semibold text-green-600 dark:text-green-400 mt-1">{formatCurrency(job.payout_amount)}</p>
+                      )}
+                    </div>
+                  </Link>
+
+                  {/* Delete icon */}
+                  <button
+                    onClick={(e) => { e.preventDefault(); setConfirmDeleteId(job.id) }}
+                    className="flex-shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                    aria-label="Delete job"
+                  >
+                    <Trash2 size={15} />
+                  </button>
                 </div>
-                <div className="text-right flex-shrink-0">
-                  <StatusBadge status={job.status} />
-                  {job.payout_amount && (
-                    <p className="text-xs font-semibold text-green-600 dark:text-green-400 mt-1">{formatCurrency(job.payout_amount)}</p>
-                  )}
-                </div>
-              </Link>
+              </div>
             )
           })
         )}

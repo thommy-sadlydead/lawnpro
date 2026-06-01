@@ -11,6 +11,8 @@ import {
   FileText,
   Map,
   Leaf,
+  Activity,
+  ClipboardList,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -19,7 +21,9 @@ const navItems = [
   { href: '/customers', icon: Users, label: 'Customers' },
   { href: '/schedule', icon: Calendar, label: 'Schedule' },
   { href: '/jobs', icon: Briefcase, label: 'Jobs' },
+  { href: '/activity', icon: Activity, label: 'Activity' },
   { href: '/employees', icon: UserCheck, label: 'Employees' },
+  { href: '/employee-jobs', icon: ClipboardList, label: 'Employee Jobs' },
   { href: '/invoices', icon: FileText, label: 'Invoices' },
   { href: '/routes', icon: Map, label: 'Routes' },
 ]

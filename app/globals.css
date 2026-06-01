@@ -20,8 +20,26 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Safe area utilities for PWA / notched devices */
 .safe-bottom {
   padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* Prevent text size adjustment when orientation changes (iOS PWA) */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* Prevent tap highlight on interactive elements in standalone mode */
+@media (display-mode: standalone) {
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
 }
 
 ::-webkit-scrollbar {

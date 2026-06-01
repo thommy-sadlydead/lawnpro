@@ -7,7 +7,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   ArrowLeft, Phone, Mail, MapPin, Lock, Edit2, Trash2,
-  Calendar, FileText, Plus, DollarSign, Clock, CheckCircle2,
+  FileText, Plus, DollarSign, CheckCircle2,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/Button'
@@ -27,8 +27,11 @@ export default function CustomerDetailPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [loading, setLoading] = useState(true)
   const [editOpen, setEditOpen] = useState(false)
+  const [deleteCustomerOpen, setDeleteCustomerOpen] = useState(false)
   const [editForm, setEditForm] = useState<Partial<Customer>>({})
   const [saving, setSaving] = useState(false)
+  const [deletingJobId, setDeletingJobId] = useState<string | null>(null)
+  const [confirmDeleteJobId, setConfirmDeleteJobId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'history' | 'invoices'>('history')
 
   useEffect(() => {
@@ -67,6 +70,7 @@ export default function CustomerDetailPage() {
       phone: editForm.phone,
       email: editForm.email,
       price: editForm.price,
+      employee_pay_per_mow: editForm.employee_pay_per_mow ?? null,
       service_frequency: editForm.service_frequency,
       gate_code: editForm.gate_code,
       service_notes: editForm.service_notes,
@@ -77,6 +81,27 @@ export default function CustomerDetailPage() {
     toast.success('Customer updated')
     setEditOpen(false)
     loadData()
+  }
+
+  async function deleteCustomer() {
+    if (!customer) return
+    setSaving(true)
+    // CASCADE deletes jobs, schedules, invoices automatically
+    const { error } = await supabase.from('customers').delete().eq('id', customer.id)
+    setSaving(false)
+    if (error) { toast.error('Failed to delete customer'); return }
+    toast.success(`${customer.name} deleted`)
+    router.replace('/customers')
+  }
+
+  async function deleteJob(jobId: string) {
+    setDeletingJobId(jobId)
+    const { error } = await supabase.from('jobs').delete().eq('id', jobId)
+    setDeletingJobId(null)
+    setConfirmDeleteJobId(null)
+    if (error) { toast.error('Failed to delete job'); return }
+    toast.success('Job deleted')
+    setJobs((prev) => prev.filter((j) => j.id !== jobId))
   }
 
   async function toggleActive() {
@@ -187,6 +212,14 @@ export default function CustomerDetailPage() {
                 <span className="text-sm text-gray-500 dark:text-gray-400">Frequency</span>
                 <span className="text-sm font-medium text-gray-900 dark:text-white">{getFrequencyLabel(customer.service_frequency)}</span>
               </div>
+              {customer.employee_pay_per_mow != null && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                    <DollarSign size={12} /> Employee Pay/Mow
+                  </span>
+                  <span className="text-sm font-bold text-purple-600 dark:text-purple-400">{formatCurrency(customer.employee_pay_per_mow)}</span>
+                </div>
+              )}
               {customer.gate_code && (
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1">
@@ -276,31 +309,65 @@ export default function CustomerDetailPage() {
               {jobs.length === 0 ? (
                 <div className="p-8 text-center text-sm text-gray-400">No service history yet</div>
               ) : (
-                jobs.map((job) => (
-                  <Link
-                    key={job.id}
-                    href={`/jobs/${job.id}`}
-                    className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
-                  >
-                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                      job.status === 'completed' ? 'bg-green-500' :
-                      job.status === 'pending' ? 'bg-yellow-500' : 'bg-gray-400'
-                    }`} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">{formatDate(job.scheduled_date)}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        {(job as Job & { employee?: { name: string } }).employee?.name ?? 'Unassigned'}
-                        {job.notes && ` · ${job.notes}`}
-                      </p>
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <StatusBadge status={job.status} />
-                      {job.payout_amount && (
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{formatCurrency(job.payout_amount)}</p>
+                jobs.map((job) => {
+                  const isConfirming = confirmDeleteJobId === job.id
+                  const isDeleting = deletingJobId === job.id
+                  return (
+                    <div key={job.id} className="relative">
+                      {/* Inline confirm overlay */}
+                      {isConfirming && (
+                        <div className="absolute inset-0 z-10 flex items-center justify-between gap-3 px-4 bg-red-50 dark:bg-red-900/30 border border-red-300 dark:border-red-700">
+                          <p className="text-xs font-medium text-red-700 dark:text-red-300">
+                            Delete {formatDate(job.scheduled_date)} job?
+                          </p>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setConfirmDeleteJobId(null)}
+                              className="px-2.5 py-1 text-xs rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={() => deleteJob(job.id)}
+                              disabled={isDeleting}
+                              className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-red-600 text-white disabled:opacity-50"
+                            >
+                              {isDeleting ? '…' : 'Delete'}
+                            </button>
+                          </div>
+                        </div>
                       )}
+                      <div className={`flex items-center gap-3 px-4 py-3 transition-colors ${isConfirming ? 'opacity-0' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'}`}>
+                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                          job.status === 'completed' ? 'bg-green-500' :
+                          job.status === 'pending' ? 'bg-yellow-500' : 'bg-gray-400'
+                        }`} />
+                        <Link href={`/jobs/${job.id}`} className="flex-1 min-w-0 flex items-center gap-3">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900 dark:text-white">{formatDate(job.scheduled_date)}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              {(job as Job & { employee?: { name: string } }).employee?.name ?? 'Unassigned'}
+                              {job.notes && ` · ${job.notes}`}
+                            </p>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <StatusBadge status={job.status} />
+                            {job.payout_amount && (
+                              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{formatCurrency(job.payout_amount)}</p>
+                            )}
+                          </div>
+                        </Link>
+                        <button
+                          onClick={() => setConfirmDeleteJobId(job.id)}
+                          className="flex-shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                          aria-label="Delete job"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </div>
-                  </Link>
-                ))
+                  )
+                })
               )}
             </div>
           )}
@@ -332,17 +399,58 @@ export default function CustomerDetailPage() {
         </div>
 
         {/* Danger zone */}
-        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4">
-          <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Account</h3>
-          <Button
-            variant={customer.is_active ? 'danger' : 'outline'}
-            size="sm"
-            onClick={toggleActive}
-          >
-            {customer.is_active ? 'Deactivate Customer' : 'Reactivate Customer'}
-          </Button>
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4 space-y-3">
+          <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Account</h3>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant={customer.is_active ? 'outline' : 'outline'}
+              size="sm"
+              onClick={toggleActive}
+            >
+              {customer.is_active ? 'Deactivate Customer' : 'Reactivate Customer'}
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              icon={<Trash2 size={14} />}
+              onClick={() => setDeleteCustomerOpen(true)}
+            >
+              Delete Customer
+            </Button>
+          </div>
         </div>
       </div>
+
+      {/* Delete Customer Confirmation Modal */}
+      <Modal isOpen={deleteCustomerOpen} onClose={() => setDeleteCustomerOpen(false)} title="Delete Customer" size="sm">
+        <div className="p-5 space-y-4">
+          <div className="flex items-start gap-3 p-3 bg-red-50 dark:bg-red-900/20 rounded-xl">
+            <Trash2 size={16} className="text-red-500 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-red-800 dark:text-red-300">This cannot be undone</p>
+              <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">
+                Permanently deletes this customer and all their jobs, schedules, and invoices.
+              </p>
+            </div>
+          </div>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Delete <strong className="text-gray-900 dark:text-white">{customer.name}</strong>?
+            {jobs.length > 0 && (
+              <span className="block mt-1 text-red-600 dark:text-red-400">
+                ⚠ This will also delete {jobs.length} job{jobs.length !== 1 ? 's' : ''} from their history.
+              </span>
+            )}
+          </p>
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1" onClick={() => setDeleteCustomerOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="danger" className="flex-1" loading={saving} onClick={deleteCustomer} icon={<Trash2 size={14} />}>
+              Delete
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Edit Modal */}
       <Modal isOpen={editOpen} onClose={() => setEditOpen(false)} title="Edit Customer" size="lg">
@@ -359,7 +467,18 @@ export default function CustomerDetailPage() {
             <Input label="ZIP" value={editForm.zip ?? ''} onChange={(e) => setEditForm((f) => ({ ...f, zip: e.target.value }))} />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Input label="Price ($)" type="number" step="0.01" value={editForm.price?.toString() ?? ''} onChange={(e) => setEditForm((f) => ({ ...f, price: parseFloat(e.target.value) }))} />
+            <Input label="Service Price ($)" type="number" step="0.01" value={editForm.price?.toString() ?? ''} onChange={(e) => setEditForm((f) => ({ ...f, price: parseFloat(e.target.value) }))} />
+            <Input
+              label="Employee Pay Per Mow ($)"
+              type="number"
+              step="0.01"
+              placeholder="0.00"
+              hint="Total to crew (Rule 3)"
+              value={editForm.employee_pay_per_mow?.toString() ?? ''}
+              onChange={(e) => setEditForm((f) => ({ ...f, employee_pay_per_mow: e.target.value ? parseFloat(e.target.value) : null }))}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
             <Select label="Frequency" value={editForm.service_frequency ?? 'biweekly'} onChange={(e) => setEditForm((f) => ({ ...f, service_frequency: e.target.value as Customer['service_frequency'] }))}>
               <option value="weekly">Weekly</option>
               <option value="biweekly">Bi-Weekly</option>

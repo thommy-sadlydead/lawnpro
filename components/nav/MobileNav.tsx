@@ -7,7 +7,7 @@ import {
   Users,
   Calendar,
   Briefcase,
-  FileText,
+  Activity,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -16,7 +16,7 @@ const navItems = [
   { href: '/customers', icon: Users, label: 'Customers' },
   { href: '/schedule', icon: Calendar, label: 'Schedule' },
   { href: '/jobs', icon: Briefcase, label: 'Jobs' },
-  { href: '/invoices', icon: FileText, label: 'Invoices' },
+  { href: '/activity', icon: Activity, label: 'Activity' },
 ]
 
 export function MobileNav() {

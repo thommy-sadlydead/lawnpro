@@ -24,6 +24,7 @@ export default function NewCustomerPage() {
     phone: '',
     email: '',
     price: '',
+    employee_pay_per_mow: '',
     service_frequency: 'biweekly',
     gate_code: '',
     service_notes: '',
@@ -50,6 +51,7 @@ export default function NewCustomerPage() {
       phone: form.phone || null,
       email: form.email || null,
       price: form.price ? parseFloat(form.price) : null,
+      employee_pay_per_mow: form.employee_pay_per_mow ? parseFloat(form.employee_pay_per_mow) : null,
       service_frequency: form.service_frequency,
       gate_code: form.gate_code || null,
       service_notes: form.service_notes || null,
@@ -153,6 +155,17 @@ export default function NewCustomerPage() {
               value={form.price}
               onChange={(e) => update('price', e.target.value)}
             />
+            <Input
+              label="Employee Pay Per Mow ($)"
+              type="number"
+              step="0.01"
+              placeholder="20.00"
+              value={form.employee_pay_per_mow}
+              onChange={(e) => update('employee_pay_per_mow', e.target.value)}
+              hint="Total paid to crew (Rule 3)"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
             <Select
               label="Frequency"
               value={form.service_frequency}
