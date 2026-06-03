@@ -6,23 +6,31 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import {
   CheckCircle2, SkipForward, CloudRain, XCircle, Calendar,
-  DollarSign, MessageSquare, ChevronDown, Filter,
+  DollarSign, MessageSquare, ChevronDown, Users,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { MobileHeader } from '@/components/nav/MobileNav'
 import { formatCurrency } from '@/lib/utils'
-import { format, isToday, isYesterday, parseISO, subDays, startOfDay } from 'date-fns'
+import { format, isToday, isYesterday, parseISO, subDays } from 'date-fns'
 import type { Job, Employee } from '@/types'
 
 type FilterPeriod = '7d' | '30d' | '90d' | 'all'
 type FilterStatus = 'all' | 'completed' | 'skipped' | 'cancelled'
 type FilterEmployee = string // employee id or 'all'
 
+type CrewEntry = {
+  id: string
+  employee_id: string
+  payout_amount: number | null
+  employee?: { id: string; name: string }
+}
+
 // Lightweight join shape returned by Supabase select
-type ActivityJob = Omit<Job, 'customer' | 'employee' | 'completed_by'> & {
+type ActivityJob = Omit<Job, 'customer' | 'employee' | 'completed_by' | 'crew'> & {
   customer?: { id: string; name: string; address?: string }
   employee?: { id: string; name: string }
   completed_by?: { id: string; name: string }
+  crew?: CrewEntry[]
 }
 
 // Group jobs by date label
@@ -52,7 +60,6 @@ const STATUS_CONFIG = {
     iconClass: 'text-green-500',
     bgClass: 'bg-green-50 dark:bg-green-900/20',
     borderClass: 'border-green-200 dark:border-green-800',
-    dotClass: 'bg-green-500',
     label: 'Completed',
   },
   skipped: {
@@ -60,7 +67,6 @@ const STATUS_CONFIG = {
     iconClass: 'text-gray-400',
     bgClass: 'bg-gray-50 dark:bg-gray-800/60',
     borderClass: 'border-gray-200 dark:border-gray-700',
-    dotClass: 'bg-gray-400',
     label: 'Skipped',
   },
   cancelled: {
@@ -68,7 +74,6 @@ const STATUS_CONFIG = {
     iconClass: 'text-red-400',
     bgClass: 'bg-red-50 dark:bg-red-900/10',
     borderClass: 'border-red-200 dark:border-red-900',
-    dotClass: 'bg-red-400',
     label: 'Cancelled',
   },
   rescheduled: {
@@ -76,7 +81,6 @@ const STATUS_CONFIG = {
     iconClass: 'text-blue-400',
     bgClass: 'bg-blue-50 dark:bg-blue-900/10',
     borderClass: 'border-blue-200 dark:border-blue-900',
-    dotClass: 'bg-blue-400',
     label: 'Rescheduled',
   },
   pending: {
@@ -84,9 +88,37 @@ const STATUS_CONFIG = {
     iconClass: 'text-yellow-500',
     bgClass: 'bg-yellow-50 dark:bg-yellow-900/10',
     borderClass: 'border-yellow-200 dark:border-yellow-900',
-    dotClass: 'bg-yellow-400',
     label: 'Pending',
   },
+}
+
+function CrewAvatars({ crew, limit = 4 }: { crew: CrewEntry[]; limit?: number }) {
+  const shown = crew.slice(0, limit)
+  const extra = crew.length - limit
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap">
+      {shown.map((member) => {
+        const name = member.employee?.name ?? '?'
+        const initials = name.split(' ').map((n) => n[0]).slice(0, 2).join('')
+        return (
+          <div key={member.id} className="flex items-center gap-1">
+            <div className="w-5 h-5 rounded-full bg-green-100 dark:bg-green-900/40 flex items-center justify-center flex-shrink-0">
+              <span className="text-green-700 dark:text-green-400 text-[9px] font-bold">{initials}</span>
+            </div>
+            <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{name.split(' ')[0]}</span>
+            {member.payout_amount != null && (
+              <span className="text-xs text-green-600 dark:text-green-400 font-semibold">
+                {formatCurrency(member.payout_amount)}
+              </span>
+            )}
+          </div>
+        )
+      })}
+      {extra > 0 && (
+        <span className="text-xs text-gray-400 dark:text-gray-500">+{extra} more</span>
+      )}
+    </div>
+  )
 }
 
 export default function ActivityPage() {
@@ -118,7 +150,8 @@ export default function ActivityPage() {
         *,
         customer:customers(id, name, address),
         employee:employees!assigned_employee_id(id, name),
-        completed_by:employees!completed_by_id(id, name)
+        completed_by:employees!completed_by_id(id, name),
+        crew:job_crew(id, employee_id, payout_amount, employee:employees(id, name))
       `)
       .not('status', 'eq', 'pending')
       .order('scheduled_date', { ascending: false })
@@ -129,10 +162,10 @@ export default function ActivityPage() {
 
     const [jobsRes, empRes] = await Promise.all([
       query,
-      supabase.from('employees').select('id, name').eq('is_active', true).order('name'),
+      supabase.from('employees').select('id, name, is_active, is_owner, default_payout, phone, email, notes, created_at, updated_at').eq('is_active', true).order('name'),
     ])
 
-    setJobs((jobsRes.data ?? []) as ActivityJob[])
+    setJobs((jobsRes.data ?? []) as unknown as ActivityJob[])
     setEmployees((empRes.data ?? []) as Employee[])
     setLoading(false)
   }
@@ -141,29 +174,52 @@ export default function ActivityPage() {
   const filtered = jobs.filter((job) => {
     if (statusFilter !== 'all' && job.status !== statusFilter) return false
     if (employeeFilter !== 'all') {
-      const doerID = job.completed_by_id ?? job.assigned_employee_id
-      if (doerID !== employeeFilter) return false
+      // Check if the employee is in the crew
+      const inCrew = (job.crew ?? []).some((c) => c.employee_id === employeeFilter)
+      // Fall back to assigned/completed_by for jobs without crew data
+      const isAssigned =
+        job.completed_by_id === employeeFilter ||
+        job.assigned_employee_id === employeeFilter
+      if (!inCrew && !isAssigned) return false
     }
     return true
   })
 
   const groups = groupByDate(filtered)
 
-  // Summary stats for the period
+  // Summary stats
   const completedJobs = filtered.filter((j) => j.status === 'completed')
   const totalPayout = completedJobs.reduce((s, j) => s + (j.payout_amount ?? 0), 0)
   const skippedCount = filtered.filter((j) => j.status === 'skipped' || j.status === 'cancelled').length
 
-  // Per-employee breakdown
+  // Per-employee breakdown using crew data
   const empBreakdown = employees.map((emp) => {
-    const empJobs = completedJobs.filter(
-      (j) => (j.completed_by_id ?? j.assigned_employee_id) === emp.id
+    const crewEntries = completedJobs.flatMap((j) =>
+      (j.crew ?? []).filter((c) => c.employee_id === emp.id)
     )
-    return {
-      ...emp,
-      count: empJobs.length,
-      payout: empJobs.reduce((s, j) => s + (j.payout_amount ?? 0), 0),
-    }
+    // Fall back to assigned/completed_by for jobs without crew records
+    const fallbackJobs =
+      crewEntries.length === 0
+        ? completedJobs.filter(
+            (j) =>
+              (j.crew ?? []).length === 0 &&
+              (j.completed_by_id === emp.id || j.assigned_employee_id === emp.id)
+          )
+        : []
+
+    const count =
+      completedJobs.filter(
+        (j) =>
+          (j.crew ?? []).some((c) => c.employee_id === emp.id) ||
+          ((j.crew ?? []).length === 0 &&
+            (j.completed_by_id === emp.id || j.assigned_employee_id === emp.id))
+      ).length
+
+    const payout =
+      crewEntries.reduce((s, c) => s + (c.payout_amount ?? 0), 0) +
+      fallbackJobs.reduce((s, j) => s + (j.payout_amount ?? 0), 0)
+
+    return { ...emp, count, payout }
   }).filter((e) => e.count > 0)
 
   return (
@@ -328,10 +384,12 @@ export default function ActivityPage() {
                   {dayJobs.map((job) => {
                     const cfg = STATUS_CONFIG[job.status as keyof typeof STATUS_CONFIG] ?? STATUS_CONFIG.pending
                     const Icon = cfg.icon
-                    const doer = job.completed_by ?? job.employee
                     const timeStr = job.completed_at
                       ? format(parseISO(job.completed_at), 'h:mm a')
                       : null
+                    const crew = job.crew ?? []
+                    // Fallback to single doer for jobs before crew tracking
+                    const fallbackDoer = job.completed_by ?? job.employee
 
                     return (
                       <Link
@@ -378,29 +436,35 @@ export default function ActivityPage() {
                             </div>
                           </div>
 
-                          {/* Who did it + notes row */}
-                          <div className="flex items-center gap-3 mt-2 flex-wrap">
-                            {doer && (
+                          {/* Crew row */}
+                          <div className="mt-2">
+                            {crew.length > 0 ? (
+                              <div className="flex items-start gap-1.5">
+                                <Users size={12} className="text-gray-400 flex-shrink-0 mt-0.5" />
+                                <CrewAvatars crew={crew} />
+                              </div>
+                            ) : fallbackDoer ? (
                               <div className="flex items-center gap-1.5">
                                 <div className="w-5 h-5 rounded-full bg-green-100 dark:bg-green-900/40 flex items-center justify-center flex-shrink-0">
                                   <span className="text-green-700 dark:text-green-400 text-[9px] font-bold">
-                                    {doer.name.split(' ').map((n) => n[0]).slice(0, 2).join('')}
+                                    {fallbackDoer.name.split(' ').map((n) => n[0]).slice(0, 2).join('')}
                                   </span>
                                 </div>
                                 <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
-                                  {doer.name}
+                                  {fallbackDoer.name}
                                 </span>
                               </div>
-                            )}
-                            {!doer && job.status === 'completed' && (
-                              <span className="text-xs text-gray-400 dark:text-gray-500 italic">No employee recorded</span>
-                            )}
-                            {(job.skip_reason) && (
-                              <span className="text-xs text-gray-500 dark:text-gray-400 italic">
-                                "{job.skip_reason}"
-                              </span>
-                            )}
+                            ) : job.status === 'completed' ? (
+                              <span className="text-xs text-gray-400 dark:text-gray-500 italic">No crew recorded</span>
+                            ) : null}
                           </div>
+
+                          {/* Skip reason */}
+                          {job.skip_reason && (
+                            <span className="text-xs text-gray-500 dark:text-gray-400 italic mt-1 block">
+                              "{job.skip_reason}"
+                            </span>
+                          )}
 
                           {/* Employee notes */}
                           {job.employee_notes && (

@@ -15,6 +15,8 @@ import { StatusBadge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
 import { Select, Input, Textarea } from '@/components/ui/Input'
 import { MobileHeader } from '@/components/nav/MobileNav'
+import { CompleteJobModal } from '@/components/jobs/CompleteJobModal'
+import { type CrewMember } from '@/components/ui/CrewPicker'
 import { formatCurrency } from '@/lib/utils'
 import type { Job, Customer, Employee } from '@/types'
 import { toast } from 'sonner'
@@ -40,6 +42,11 @@ function SchedulePageInner() {
   const [rainDelayOpen, setRainDelayOpen] = useState(false)
   const [selectedDate, setSelectedDate] = useState('')
 
+  // Complete modal
+  const [completeModalOpen, setCompleteModalOpen] = useState(false)
+  const [completeModalJob, setCompleteModalJob] = useState<Job | null>(null)
+  const [completeModalInitialCrew, setCompleteModalInitialCrew] = useState<CrewMember[]>([])
+
   const [newJobForm, setNewJobForm] = useState({
     customer_id: searchParams.get('customer') ?? '',
     assigned_employee_id: '',
@@ -63,12 +70,12 @@ function SchedulePageInner() {
     const [jobsRes, custRes, empRes] = await Promise.all([
       supabase
         .from('jobs')
-        .select('*, customer:customers(id, name, address, city, price, gate_code), employee:employees!assigned_employee_id(id, name)')
+        .select('*, customer:customers(id, name, address, city, price, gate_code, employee_pay_per_mow), employee:employees!assigned_employee_id(id, name)')
         .gte('scheduled_date', start)
         .lte('scheduled_date', end)
         .order('scheduled_date'),
       supabase.from('customers').select('id, name, address, price, service_frequency').eq('is_active', true).order('name'),
-      supabase.from('employees').select('id, name, default_payout').eq('is_active', true).order('name'),
+      supabase.from('employees').select('id, name, is_owner, is_active, default_payout, phone, email, notes, created_at, updated_at').eq('is_active', true).order('name'),
     ])
 
     setJobs((jobsRes.data ?? []) as Job[])
@@ -138,6 +145,21 @@ function SchedulePageInner() {
     setRainDelayOpen(false)
     setSelectedJob(null)
     loadData()
+  }
+
+  function openCompleteModal(job: Job) {
+    const jobWithCustomer = job as Job & { customer?: { price?: number; employee_pay_per_mow?: number } }
+    const assignedId = job.assigned_employee_id
+    const assigned = assignedId ? employees.find((e) => e.id === assignedId) : null
+    setCompleteModalInitialCrew(
+      assigned
+        ? [{ employee_id: assigned.id, payout_amount: assigned.default_payout?.toString() ?? '' }]
+        : []
+    )
+    setCompleteModalJob(job)
+    setCompleteModalOpen(true)
+    // Close job detail modal if open
+    setSelectedJob(null)
   }
 
   const todayJobs = getJobsForDay(new Date())
@@ -403,7 +425,7 @@ function SchedulePageInner() {
                         variant="primary"
                         className="flex-1"
                         icon={<CheckCircle2 size={14} />}
-                        onClick={(e) => { e.stopPropagation(); updateJobStatus(job, 'completed') }}
+                        onClick={(e) => { e.stopPropagation(); openCompleteModal(job) }}
                       >
                         Complete
                       </Button>
@@ -544,7 +566,7 @@ function SchedulePageInner() {
                 <Button
                   className="w-full"
                   icon={<CheckCircle2 size={16} />}
-                  onClick={() => updateJobStatus(selectedJob, 'completed')}
+                  onClick={() => openCompleteModal(selectedJob)}
                 >
                   Mark Completed
                 </Button>
@@ -574,6 +596,20 @@ function SchedulePageInner() {
             </div>
           </div>
         </Modal>
+      )}
+
+      {/* Complete Job Modal */}
+      {completeModalJob && (
+        <CompleteJobModal
+          isOpen={completeModalOpen}
+          onClose={() => setCompleteModalOpen(false)}
+          jobId={completeModalJob.id}
+          jobPrice={(completeModalJob as Job & { customer?: { price?: number } }).customer?.price ?? null}
+          employeePayPerMow={(completeModalJob as Job & { customer?: { employee_pay_per_mow?: number } }).customer?.employee_pay_per_mow ?? null}
+          initialCrew={completeModalInitialCrew}
+          employees={employees}
+          onCompleted={() => { setCompleteModalJob(null); loadData() }}
+        />
       )}
 
       {/* Rain Delay Modal */}

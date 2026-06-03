@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -13,11 +13,11 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
-import { Input, Textarea, Select } from '@/components/ui/Input'
-import { CrewPicker, type CrewMember } from '@/components/ui/CrewPicker'
+import { Input, Select } from '@/components/ui/Input'
+import { type CrewMember } from '@/components/ui/CrewPicker'
+import { CompleteJobModal } from '@/components/jobs/CompleteJobModal'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { calculatePayroll, ruleColor } from '@/lib/payroll'
-import type { Job, Employee, JobCrew } from '@/types'
+import type { Job, Employee } from '@/types'
 import { toast } from 'sonner'
 import { format, parseISO } from 'date-fns'
 
@@ -51,10 +51,8 @@ export default function JobDetailPage() {
   const [rescheduleOpen, setRescheduleOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
 
-  // Complete form state
-  const [crew, setCrew] = useState<CrewMember[]>([])
-  const [crewRequired, setCrewRequired] = useState(false)
-  const [employeeNotes, setEmployeeNotes] = useState('')
+  // Pre-computed crew to pass into the shared modal on open
+  const [initialCrew, setInitialCrew] = useState<CrewMember[]>([])
 
   // Skip / reschedule
   const [skipReason, setSkipReason] = useState('')
@@ -62,49 +60,6 @@ export default function JobDetailPage() {
   const [saving, setSaving] = useState(false)
 
   useEffect(() => { loadData() }, [id])
-
-  // ── Auto-calculate payouts whenever crew SELECTION changes ────────────────
-  // We watch the sorted list of IDs (not payout amounts) to avoid overriding
-  // manual edits when a user adjusts a payout number.
-  const crewIdKey = [...crew].map((c) => c.employee_id).sort().join(',')
-
-  useEffect(() => {
-    if (!job || crew.length === 0) return
-
-    const result = calculatePayroll({
-      jobPrice: job.customer?.price ?? null,
-      employeePayPerMow: job.customer?.employee_pay_per_mow ?? null,
-      crew: crew.map((m) => {
-        const emp = employees.find((e) => e.id === m.employee_id)
-        return { id: m.employee_id, isOwner: emp?.is_owner ?? false, name: emp?.name ?? '' }
-      }),
-    })
-
-    if (result.payouts.size === 0) return
-
-    setCrew((prev) =>
-      prev.map((m) => {
-        const calculated = result.payouts.get(m.employee_id)
-        return calculated !== undefined
-          ? { ...m, payout_amount: calculated.toString() }
-          : m
-      })
-    )
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [crewIdKey]) // intentionally excludes crew payout values
-
-  // Current payroll calculation result (for the summary banner)
-  const payrollResult = useMemo(() => {
-    if (!job || crew.length === 0) return null
-    return calculatePayroll({
-      jobPrice: job.customer?.price ?? null,
-      employeePayPerMow: job.customer?.employee_pay_per_mow ?? null,
-      crew: crew.map((m) => {
-        const emp = employees.find((e) => e.id === m.employee_id)
-        return { id: m.employee_id, isOwner: emp?.is_owner ?? false, name: emp?.name ?? '' }
-      }),
-    })
-  }, [crewIdKey, job, employees])
 
   // ── Data loading ──────────────────────────────────────────────────────────
 
@@ -139,25 +94,23 @@ export default function JobDetailPage() {
       j.crew = (crewData ?? []) as unknown as JobWithRelations['crew']
       setJob(j)
 
-      // Pre-populate complete form
-      setEmployeeNotes(j.employee_notes ?? '')
-
+      // Pre-populate the initial crew for the completion modal
       if (j.crew && j.crew.length > 0) {
-        // Already has crew saved — pre-populate
-        setCrew(
+        setInitialCrew(
           j.crew.map((c) => ({
             employee_id: c.employee_id,
             payout_amount: c.payout_amount?.toString() ?? '',
           }))
         )
       } else if (j.employee) {
-        // Pre-select the assigned employee
         const assigned = empList.find((e) => e.id === j.employee?.id)
-        setCrew(
+        setInitialCrew(
           assigned
             ? [{ employee_id: assigned.id, payout_amount: assigned.default_payout?.toString() ?? '' }]
             : []
         )
+      } else {
+        setInitialCrew([])
       }
     }
 
@@ -165,55 +118,6 @@ export default function JobDetailPage() {
   }
 
   // ── Actions ───────────────────────────────────────────────────────────────
-
-  async function markComplete() {
-    if (crew.length === 0) {
-      setCrewRequired(true)
-      return
-    }
-    setCrewRequired(false)
-    setSaving(true)
-
-    const totalPayout = crew.reduce((s, m) => s + (parseFloat(m.payout_amount) || 0), 0)
-    const primaryEmployeeId = crew[0].employee_id
-
-    // 1. Update the job record
-    const { error: jobError } = await supabase.from('jobs').update({
-      status: 'completed',
-      completed_at: new Date().toISOString(),
-      completed_by_id: primaryEmployeeId,
-      employee_notes: employeeNotes || null,
-      payout_amount: totalPayout || null,
-    }).eq('id', id as string)
-
-    if (jobError) {
-      toast.error('Failed to save job')
-      setSaving(false)
-      return
-    }
-
-    // 2. Replace crew entries (delete + re-insert is idempotent)
-    await supabase.from('job_crew').delete().eq('job_id', id as string)
-
-    const { error: crewError } = await supabase.from('job_crew').insert(
-      crew.map((m) => ({
-        job_id: id as string,
-        employee_id: m.employee_id,
-        payout_amount: parseFloat(m.payout_amount) || null,
-      }))
-    )
-
-    setSaving(false)
-
-    if (crewError) {
-      toast.error('Job completed but crew save failed — please try again')
-      return
-    }
-
-    toast.success('Job marked as completed!')
-    setCompleteOpen(false)
-    loadData()
-  }
 
   async function markSkipped() {
     setSaving(true)
@@ -472,7 +376,7 @@ export default function JobDetailPage() {
               className="w-full"
               size="lg"
               icon={<CheckCircle2 size={18} />}
-              onClick={() => { setCrewRequired(false); setCompleteOpen(true) }}
+              onClick={() => setCompleteOpen(true)}
             >
               Mark as Completed
             </Button>
@@ -518,66 +422,16 @@ export default function JobDetailPage() {
       </div>
 
       {/* ── Complete Modal ─────────────────────────────────────────────────── */}
-      <Modal isOpen={completeOpen} onClose={() => setCompleteOpen(false)} title="Complete Job" size="md">
-        <div className="p-5 space-y-5">
-
-          <CrewPicker
-            employees={employees}
-            value={crew}
-            onChange={setCrew}
-            required={crewRequired}
-          />
-
-          {/* Payroll summary banner */}
-          {payrollResult && payrollResult.rule && (
-            <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 p-3 space-y-1.5">
-              <div className="flex items-center gap-2">
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide ${ruleColor(payrollResult.rule)}`}>
-                  {payrollResult.ruleLabel}
-                </span>
-                <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">
-                  Payroll auto-calculated
-                </span>
-              </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-                {payrollResult.summary}
-              </p>
-              {customer?.price == null && (
-                <p className="text-xs text-amber-600 dark:text-amber-400">
-                  ⚠ No job price set on this customer — set it on the customer page for accurate payroll.
-                </p>
-              )}
-              {payrollResult.rule === 3 && customer?.employee_pay_per_mow == null && (
-                <p className="text-xs text-amber-600 dark:text-amber-400">
-                  ⚠ No Employee Pay Per Mow set for this property — edit the customer to set it.
-                </p>
-              )}
-            </div>
-          )}
-
-          <Textarea
-            label="Field notes (optional)"
-            placeholder="Long grass, extra trimming, gate was unlocked, customer home…"
-            value={employeeNotes}
-            onChange={(e) => setEmployeeNotes(e.target.value)}
-            rows={3}
-          />
-
-          <div className="flex gap-3 pt-1">
-            <Button variant="outline" className="flex-1" onClick={() => setCompleteOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              className="flex-1"
-              loading={saving}
-              onClick={markComplete}
-              icon={<CheckCircle2 size={15} />}
-            >
-              Mark Complete
-            </Button>
-          </div>
-        </div>
-      </Modal>
+      <CompleteJobModal
+        isOpen={completeOpen}
+        onClose={() => setCompleteOpen(false)}
+        jobId={id as string}
+        jobPrice={job.customer?.price ?? null}
+        employeePayPerMow={job.customer?.employee_pay_per_mow ?? null}
+        initialCrew={initialCrew}
+        employees={employees}
+        onCompleted={loadData}
+      />
 
       {/* ── Skip Modal ─────────────────────────────────────────────────────── */}
       <Modal isOpen={skipOpen} onClose={() => setSkipOpen(false)} title="Skip Job" size="sm">
