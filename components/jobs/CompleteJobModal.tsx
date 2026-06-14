@@ -2,21 +2,28 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { CheckCircle2 } from 'lucide-react'
+import { addDays, addMonths, format, parseISO } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Textarea } from '@/components/ui/Input'
 import { CrewPicker, type CrewMember } from '@/components/ui/CrewPicker'
 import { calculatePayroll, ruleColor } from '@/lib/payroll'
-import type { Employee } from '@/types'
+import type { Employee, ServiceFrequency } from '@/types'
 import { toast } from 'sonner'
 
 interface CompleteJobModalProps {
   isOpen: boolean
   onClose: () => void
   jobId: string
+  /** Customer data needed for payroll + auto-scheduling */
+  customerId: string
   jobPrice: number | null
   employeePayPerMow: number | null
+  serviceFrequency: ServiceFrequency | null
+  /** Carry-over for the next job */
+  assignedEmployeeId: string | null
+  scheduleId?: string | null
   /** Pre-selected crew members (e.g. the assigned employee) */
   initialCrew?: CrewMember[]
   employees: Employee[]
@@ -28,8 +35,12 @@ export function CompleteJobModal({
   isOpen,
   onClose,
   jobId,
+  customerId,
   jobPrice,
   employeePayPerMow,
+  serviceFrequency,
+  assignedEmployeeId,
+  scheduleId,
   initialCrew,
   employees,
   onCompleted,
@@ -89,6 +100,88 @@ export function CompleteJobModal({
     })
   }, [crewIdKey, jobPrice, employeePayPerMow, employees])
 
+  // ── Auto-scheduling ──────────────────────────────────────────────────────────
+  //
+  // After completing a recurring job, silently create the next pending job so
+  // the crew never has to schedule it manually.
+  //
+  // Rules:
+  //   weekly   → completion date + 7 days
+  //   biweekly → completion date + 14 days
+  //   monthly  → completion date + 1 calendar month (same day-of-month)
+  //   custom / one-time → no auto-schedule
+  //
+  // Guard: if a pending or rescheduled job for this customer already exists in
+  // the future, we skip creation to prevent duplicates.
+
+  async function autoScheduleNext(completedAt: string) {
+    if (
+      !serviceFrequency ||
+      serviceFrequency === 'custom' ||
+      serviceFrequency === 'one-time'
+    ) {
+      return
+    }
+
+    const completionDate = parseISO(completedAt.split('T')[0]) // date-only, no TZ shift
+    let nextDate: Date
+
+    switch (serviceFrequency) {
+      case 'weekly':
+        nextDate = addDays(completionDate, 7)
+        break
+      case 'biweekly':
+        nextDate = addDays(completionDate, 14)
+        break
+      case 'monthly':
+        nextDate = addMonths(completionDate, 1)
+        break
+      default:
+        return
+    }
+
+    const nextDateStr = format(nextDate, 'yyyy-MM-dd')
+    const todayStr = format(new Date(), 'yyyy-MM-dd')
+
+    // Check for an existing future pending/rescheduled job for this customer
+    const { data: existing } = await supabase
+      .from('jobs')
+      .select('id')
+      .eq('customer_id', customerId)
+      .in('status', ['pending', 'rescheduled'])
+      .gte('scheduled_date', todayStr)
+      .limit(1)
+
+    if (existing && existing.length > 0) {
+      // A future job already exists — skip silently
+      return
+    }
+
+    const { error } = await supabase.from('jobs').insert({
+      customer_id: customerId,
+      assigned_employee_id: assignedEmployeeId ?? null,
+      schedule_id: scheduleId ?? null,
+      scheduled_date: nextDateStr,
+      status: 'pending',
+      payout_amount: jobPrice ?? null,
+    })
+
+    if (!error) {
+      const freqLabel =
+        serviceFrequency === 'weekly'
+          ? 'weekly'
+          : serviceFrequency === 'biweekly'
+          ? 'bi-weekly'
+          : 'monthly'
+      toast.success(
+        `Next ${freqLabel} job scheduled for ${format(nextDate, 'EEE, MMM d')}`,
+        { duration: 4000 }
+      )
+    }
+  }
+
+  // ── Completion save ──────────────────────────────────────────────────────────
+
   async function markComplete() {
     if (crew.length === 0) {
       setCrewRequired(true)
@@ -97,6 +190,7 @@ export function CompleteJobModal({
     setCrewRequired(false)
     setSaving(true)
 
+    const completedAt = new Date().toISOString()
     const totalPayout = crew.reduce((s, m) => s + (parseFloat(m.payout_amount) || 0), 0)
     const primaryEmployeeId = crew[0].employee_id
 
@@ -105,7 +199,7 @@ export function CompleteJobModal({
       .from('jobs')
       .update({
         status: 'completed',
-        completed_at: new Date().toISOString(),
+        completed_at: completedAt,
         completed_by_id: primaryEmployeeId,
         employee_notes: employeeNotes || null,
         payout_amount: totalPayout || null,
@@ -129,13 +223,16 @@ export function CompleteJobModal({
       }))
     )
 
-    setSaving(false)
-
     if (crewError) {
+      setSaving(false)
       toast.error('Job completed but crew save failed — please try again')
       return
     }
 
+    // 3. Auto-schedule the next recurring job (fires async, non-blocking for UX)
+    await autoScheduleNext(completedAt)
+
+    setSaving(false)
     toast.success('Job marked as completed!')
     onClose()
     onCompleted()
@@ -177,6 +274,24 @@ export function CompleteJobModal({
                 ⚠ No Employee Pay Per Mow set for this property — edit the customer to set it.
               </p>
             )}
+          </div>
+        )}
+
+        {/* Auto-schedule hint */}
+        {serviceFrequency && serviceFrequency !== 'custom' && serviceFrequency !== 'one-time' && (
+          <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/40 rounded-lg px-3 py-2">
+            <CheckCircle2 size={12} className="text-green-500 flex-shrink-0" />
+            <span>
+              Next{' '}
+              <span className="font-medium text-gray-700 dark:text-gray-300">
+                {serviceFrequency === 'weekly'
+                  ? 'weekly'
+                  : serviceFrequency === 'biweekly'
+                  ? 'bi-weekly'
+                  : 'monthly'}
+              </span>{' '}
+              job will be auto-scheduled after completion.
+            </span>
           </div>
         )}
 

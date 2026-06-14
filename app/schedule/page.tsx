@@ -70,7 +70,7 @@ function SchedulePageInner() {
     const [jobsRes, custRes, empRes] = await Promise.all([
       supabase
         .from('jobs')
-        .select('*, customer:customers(id, name, address, city, price, gate_code, employee_pay_per_mow), employee:employees!assigned_employee_id(id, name)')
+        .select('*, customer:customers(id, name, address, city, price, gate_code, employee_pay_per_mow, service_frequency), employee:employees!assigned_employee_id(id, name)')
         .gte('scheduled_date', start)
         .lte('scheduled_date', end)
         .order('scheduled_date'),
@@ -604,8 +604,12 @@ function SchedulePageInner() {
           isOpen={completeModalOpen}
           onClose={() => setCompleteModalOpen(false)}
           jobId={completeModalJob.id}
+          customerId={completeModalJob.customer_id}
           jobPrice={(completeModalJob as Job & { customer?: { price?: number } }).customer?.price ?? null}
           employeePayPerMow={(completeModalJob as Job & { customer?: { employee_pay_per_mow?: number } }).customer?.employee_pay_per_mow ?? null}
+          serviceFrequency={((completeModalJob as Job & { customer?: { service_frequency?: string } }).customer?.service_frequency as import('@/types').ServiceFrequency) ?? null}
+          assignedEmployeeId={completeModalJob.assigned_employee_id}
+          scheduleId={completeModalJob.schedule_id}
           initialCrew={completeModalInitialCrew}
           employees={employees}
           onCompleted={() => { setCompleteModalJob(null); loadData() }}

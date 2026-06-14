@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
   Calendar,
@@ -15,15 +15,20 @@ import {
   Clock,
   AlertCircle,
   TrendingUp,
+  Lock,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { StatCard } from '@/components/ui/Card'
 import { StatusBadge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
+import { Modal } from '@/components/ui/Modal'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import type { Job, Invoice } from '@/types'
 import { MobileHeader } from '@/components/nav/MobileNav'
 import { format } from 'date-fns'
+
+// UI-only access code — protects display, not the underlying data fetch.
+const REVENUE_ACCESS_CODE = '6969'
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
@@ -38,12 +43,28 @@ export default function DashboardPage() {
     weekRevenue: 0,
   })
 
+  // ── Revenue lock state ────────────────────────────────────────────────────
+  // Stays unlocked until page refresh (useState clears on unmount / hard reload).
+  const [revenueUnlocked, setRevenueUnlocked] = useState(false)
+  const [pinModalOpen, setPinModalOpen] = useState(false)
+  const [pinInput, setPinInput] = useState('')
+  const [pinError, setPinError] = useState(false)
+  const [pinShake, setPinShake] = useState(false)
+  const pinInputRef = useRef<HTMLInputElement>(null)
+
   const supabase = createClient()
   const today = format(new Date(), 'yyyy-MM-dd')
 
   useEffect(() => {
     loadDashboard()
   }, [])
+
+  // Auto-focus the PIN input whenever the modal opens
+  useEffect(() => {
+    if (pinModalOpen) {
+      setTimeout(() => pinInputRef.current?.focus(), 50)
+    }
+  }, [pinModalOpen])
 
   async function loadDashboard() {
     setLoading(true)
@@ -97,6 +118,34 @@ export default function DashboardPage() {
     }
   }
 
+  function openPinModal() {
+    setPinInput('')
+    setPinError(false)
+    setPinShake(false)
+    setPinModalOpen(true)
+  }
+
+  function closePinModal() {
+    setPinModalOpen(false)
+    setPinInput('')
+    setPinError(false)
+    setPinShake(false)
+  }
+
+  function handlePinSubmit() {
+    if (pinInput === REVENUE_ACCESS_CODE) {
+      setRevenueUnlocked(true)
+      closePinModal()
+    } else {
+      setPinError(true)
+      setPinInput('')
+      // Trigger shake animation, then clear it
+      setPinShake(true)
+      setTimeout(() => setPinShake(false), 500)
+      pinInputRef.current?.focus()
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       <MobileHeader title="Dashboard" />
@@ -143,13 +192,40 @@ export default function DashboardPage() {
             trend={formatCurrency(stats.unpaidTotal)}
             color="yellow"
           />
-          <StatCard
-            label="Week Revenue"
-            value={loading ? '—' : formatCurrency(stats.weekRevenue)}
-            icon={<TrendingUp size={18} />}
-            trend={`${stats.activeCustomers} active customers`}
-            color="green"
-          />
+
+          {/* ── Week Revenue — locked until access code entered ── */}
+          {revenueUnlocked ? (
+            <StatCard
+              label="Week Revenue"
+              value={loading ? '—' : formatCurrency(stats.weekRevenue)}
+              icon={<TrendingUp size={18} />}
+              trend={`${stats.activeCustomers} active customers`}
+              color="green"
+            />
+          ) : (
+            <button
+              onClick={openPinModal}
+              className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5 text-left cursor-pointer hover:border-green-400 dark:hover:border-green-600 hover:shadow-md transition-all duration-150 group w-full"
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Week Revenue</p>
+                  <div className="mt-1 flex items-center gap-1.5">
+                    <p className="text-2xl font-bold text-gray-300 dark:text-gray-600 tracking-[0.2em]">
+                      ••••
+                    </p>
+                  </div>
+                  <p className="mt-1 text-xs text-green-600 dark:text-green-500 group-hover:underline flex items-center gap-1">
+                    <Lock size={10} />
+                    Tap to unlock
+                  </p>
+                </div>
+                <div className="p-2.5 rounded-lg flex-shrink-0 ml-3 bg-gray-50 dark:bg-gray-800 text-gray-400 dark:text-gray-500">
+                  <Lock size={18} />
+                </div>
+              </div>
+            </button>
+          )}
         </div>
 
         <div className="grid lg:grid-cols-2 gap-4 lg:gap-6">
@@ -288,6 +364,72 @@ export default function DashboardPage() {
           ))}
         </div>
       </div>
+
+      {/* ── PIN Access Modal ───────────────────────────────────────────────────── */}
+      <Modal
+        isOpen={pinModalOpen}
+        onClose={closePinModal}
+        title="Weekly Revenue"
+        size="sm"
+      >
+        <div className="p-6 space-y-5">
+          {/* Lock icon */}
+          <div className="flex justify-center">
+            <div className="w-16 h-16 rounded-2xl bg-green-50 dark:bg-green-900/20 flex items-center justify-center">
+              <Lock size={28} className="text-green-600 dark:text-green-400" />
+            </div>
+          </div>
+
+          <div className="text-center">
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Enter the access code to view revenue.
+            </p>
+          </div>
+
+          {/* PIN input */}
+          <div className="space-y-2">
+            <input
+              ref={pinInputRef}
+              type="password"
+              inputMode="numeric"
+              placeholder="Access code"
+              value={pinInput}
+              onChange={(e) => {
+                setPinInput(e.target.value)
+                setPinError(false)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handlePinSubmit()
+              }}
+              className={`w-full text-center text-xl font-bold tracking-[0.4em] px-4 py-3 rounded-xl border transition-all focus:outline-none focus:ring-2 focus:ring-green-500 ${
+                pinShake ? 'animate-[shake_0.4s_ease-in-out]' : ''
+              } ${
+                pinError
+                  ? 'border-red-400 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'
+                  : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white'
+              }`}
+            />
+            {pinError && (
+              <p className="text-sm text-red-500 dark:text-red-400 font-medium text-center">
+                Incorrect access code.
+              </p>
+            )}
+          </div>
+
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1" onClick={closePinModal}>
+              Cancel
+            </Button>
+            <Button
+              className="flex-1"
+              icon={<Lock size={15} />}
+              onClick={handlePinSubmit}
+            >
+              Unlock
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

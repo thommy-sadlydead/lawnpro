@@ -39,7 +39,7 @@ export function Sidebar() {
           <Leaf className="h-5 w-5 text-white" />
         </div>
         <div>
-          <p className="font-bold text-white text-sm leading-tight">LawnPro</p>
+          <p className="font-bold text-white text-sm leading-tight">CrossCut</p>
           <p className="text-xs text-gray-400">Business Manager</p>
         </div>
       </div>
@@ -68,7 +68,7 @@ export function Sidebar() {
 
       {/* Footer */}
       <div className="p-4 border-t border-gray-800">
-        <p className="text-xs text-gray-500">© 2025 LawnPro</p>
+        <p className="text-xs text-gray-500">© 2025 CrossCut Lawn Care</p>
       </div>
     </aside>
   )

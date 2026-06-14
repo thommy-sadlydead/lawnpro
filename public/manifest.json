@@ -1,6 +1,6 @@
 {
-  "name": "LawnPro Business Manager",
-  "short_name": "LawnPro",
+  "name": "CrossCut Business Manager",
+  "short_name": "CrossCut",
   "description": "Manage customers, scheduling, jobs, employees, and invoices for your lawn care business.",
   "start_url": "/",
   "scope": "/",

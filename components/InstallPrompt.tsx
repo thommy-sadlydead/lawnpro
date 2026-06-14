@@ -32,7 +32,7 @@ export function InstallPrompt() {
     if ((window.navigator as { standalone?: boolean }).standalone === true) return
 
     // Don't show if recently dismissed
-    const dismissedAt = localStorage.getItem('lawnpro-install-dismissed')
+    const dismissedAt = localStorage.getItem('crosscut-install-dismissed')
     if (dismissedAt) {
       const daysSince = (Date.now() - parseInt(dismissedAt)) / (1000 * 60 * 60 * 24)
       if (daysSince < 30) return
@@ -68,7 +68,7 @@ export function InstallPrompt() {
   const dismiss = () => {
     setVisible(false)
     setIosInstructions(false)
-    localStorage.setItem('lawnpro-install-dismissed', Date.now().toString())
+    localStorage.setItem('crosscut-install-dismissed', Date.now().toString())
   }
 
   const install = async () => {
@@ -111,7 +111,7 @@ export function InstallPrompt() {
             </div>
             <div>
               <p className="text-sm font-semibold text-white">Add to Home Screen</p>
-              <p className="text-xs text-gray-400">LawnPro</p>
+              <p className="text-xs text-gray-400">CrossCut</p>
             </div>
           </div>
 
@@ -158,12 +158,12 @@ export function InstallPrompt() {
       >
         {/* Icon */}
         <div className="w-9 h-9 flex-shrink-0">
-          <img src="/icons/icon-96.png" alt="LawnPro" className="w-9 h-9 rounded-lg" />
+          <img src="/icons/icon-96.png" alt="CrossCut" className="w-9 h-9 rounded-lg" />
         </div>
 
         {/* Text */}
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-white leading-tight">Install LawnPro</p>
+          <p className="text-sm font-semibold text-white leading-tight">Install CrossCut</p>
           <p className="text-xs text-gray-400 truncate">Add to home screen for quick access</p>
         </div>
 

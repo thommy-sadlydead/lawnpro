@@ -173,6 +173,7 @@ export default function NewCustomerPage() {
             >
               <option value="weekly">Weekly</option>
               <option value="biweekly">Bi-Weekly</option>
+              <option value="monthly">Monthly</option>
               <option value="custom">Custom</option>
               <option value="one-time">One-Time</option>
             </Select>

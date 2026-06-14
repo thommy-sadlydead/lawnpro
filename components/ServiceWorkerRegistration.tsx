@@ -45,7 +45,7 @@ export function ServiceWorkerRegistration() {
             ) {
               // Show an update toast — clicking it activates the new SW
               toast('Update available', {
-                description: 'A new version of LawnPro is ready.',
+                description: 'A new version of CrossCut is ready.',
                 duration: Infinity,
                 action: {
                   label: 'Refresh',

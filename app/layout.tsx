@@ -7,7 +7,7 @@ import { InstallPrompt } from '@/components/InstallPrompt'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'LawnPro — Lawn Business Manager',
+  title: 'CrossCut — Lawn Business Manager',
   description: 'Manage customers, scheduling, jobs, employees, and invoices for your lawn care business.',
   manifest: '/manifest.json',
 
@@ -15,12 +15,12 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'LawnPro',
+    title: 'CrossCut',
   },
 
   // Open Graph (looks nicer when shared from the installed app)
   openGraph: {
-    title: 'LawnPro Business Manager',
+    title: 'CrossCut Business Manager',
     description: 'Manage your lawn care business from anywhere.',
     type: 'website',
   },

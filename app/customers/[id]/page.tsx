@@ -721,6 +721,7 @@ export default function CustomerDetailPage() {
             <Select label="Frequency" value={editForm.service_frequency ?? 'biweekly'} onChange={(e) => setEditForm((f) => ({ ...f, service_frequency: e.target.value as Customer['service_frequency'] }))}>
               <option value="weekly">Weekly</option>
               <option value="biweekly">Bi-Weekly</option>
+              <option value="monthly">Monthly</option>
               <option value="custom">Custom</option>
               <option value="one-time">One-Time</option>
             </Select>

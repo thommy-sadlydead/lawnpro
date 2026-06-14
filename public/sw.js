@@ -1,5 +1,5 @@
 /**
- * LawnPro Service Worker
+ * CrossCut Service Worker
  *
  * Strategy:
  *  - /_next/static/*  → Cache-First (hashed immutable assets, safe to cache forever)
@@ -11,8 +11,8 @@
  */
 
 const CACHE_VERSION = 'v1'
-const STATIC_CACHE  = `lawnpro-static-${CACHE_VERSION}`
-const PAGES_CACHE   = `lawnpro-pages-${CACHE_VERSION}`
+const STATIC_CACHE  = `crosscut-static-${CACHE_VERSION}`
+const PAGES_CACHE   = `crosscut-pages-${CACHE_VERSION}`
 
 // Files to pre-cache on install
 const PRECACHE_URLS = [
@@ -155,7 +155,7 @@ self.addEventListener('message', (event) => {
 self.addEventListener('push', (event) => {
   if (!event.data) return
   const data = event.data.json()
-  self.registration.showNotification(data.title || 'LawnPro', {
+  self.registration.showNotification(data.title || 'CrossCut', {
     body: data.body || '',
     icon: '/icons/icon-192.png',
     badge: '/icons/icon-72.png',

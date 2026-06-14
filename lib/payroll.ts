@@ -1,5 +1,5 @@
 /**
- * LawnPro Payroll Calculator
+ * CrossCut Payroll Calculator
  *
  * Three rules govern how job revenue is split:
  *

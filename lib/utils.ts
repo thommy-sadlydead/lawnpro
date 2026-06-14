@@ -68,6 +68,7 @@ export function getFrequencyLabel(freq: string): string {
   switch (freq) {
     case 'weekly': return 'Weekly'
     case 'biweekly': return 'Bi-Weekly'
+    case 'monthly': return 'Monthly'
     case 'custom': return 'Custom'
     case 'one-time': return 'One-Time'
     default: return freq

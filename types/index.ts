@@ -1,4 +1,4 @@
-export type ServiceFrequency = 'weekly' | 'biweekly' | 'custom' | 'one-time'
+export type ServiceFrequency = 'weekly' | 'biweekly' | 'monthly' | 'custom' | 'one-time'
 export type JobStatus = 'pending' | 'completed' | 'skipped' | 'cancelled' | 'rescheduled'
 export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'void'
 

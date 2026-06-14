@@ -7,7 +7,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   ArrowLeft, CheckCircle2, Send, Printer, Trash2, DollarSign,
-  Mail, Phone, MapPin, Calendar, FileText,
+  Mail, Phone, MapPin, Calendar, FileText, Copy, Check,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/Button'
@@ -30,6 +30,7 @@ export default function InvoiceDetailPage() {
   const [sendOpen, setSendOpen] = useState(false)
   const [paidDate, setPaidDate] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [saving, setSaving] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     loadData()
@@ -83,6 +84,137 @@ export default function InvoiceDetailPage() {
     window.print()
   }
 
+  // ── Copy Invoice ─────────────────────────────────────────────────────────────
+
+  function buildInvoiceText(): string {
+    if (!invoice) return ''
+    const customer = (invoice as Invoice & { customer?: Customer }).customer
+    const lines: string[] = []
+
+    // ── Header / branding ─────────────────────────────────────────────────────
+    lines.push('CrossCut Lawn Care')
+    lines.push('='.repeat(36))
+    lines.push('')
+
+    // ── Invoice meta ──────────────────────────────────────────────────────────
+    lines.push(`Invoice:  ${invoice.invoice_number}`)
+    lines.push(`Date:     ${format(new Date(invoice.created_at), 'MMMM d, yyyy')}`)
+    if (invoice.due_date) {
+      lines.push(`Due:      ${format(new Date(invoice.due_date), 'MMMM d, yyyy')}`)
+    }
+    lines.push(`Status:   ${invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}`)
+    lines.push('')
+
+    // ── Customer ──────────────────────────────────────────────────────────────
+    if (customer) {
+      lines.push('Bill To:')
+      lines.push('-'.repeat(24))
+      lines.push(customer.name)
+
+      const addressParts = [
+        customer.address,
+        customer.city,
+        customer.state,
+        customer.zip,
+      ].filter(Boolean)
+      if (addressParts.length > 0) lines.push(addressParts.join(', '))
+      if (customer.phone) lines.push(formatPhone(customer.phone))
+      if (customer.email) lines.push(customer.email)
+      lines.push('')
+    }
+
+    // ── Line items ────────────────────────────────────────────────────────────
+    if (items.length > 0) {
+      lines.push('Services:')
+      lines.push('-'.repeat(24))
+      for (const item of items) {
+        const date = item.service_date
+          ? format(new Date(item.service_date), 'MMM d')
+          : null
+        const qtyPrice =
+          item.quantity > 1
+            ? `${item.quantity}x @ ${formatCurrency(item.unit_price)}`
+            : formatCurrency(item.unit_price)
+
+        // Compose line: description  [date]  qty/price  total
+        const parts = [
+          item.description,
+          date,
+          qtyPrice,
+          `→  ${formatCurrency(item.total)}`,
+        ].filter(Boolean)
+        lines.push(parts.join('   '))
+      }
+      lines.push('')
+    }
+
+    // ── Totals ────────────────────────────────────────────────────────────────
+    lines.push('-'.repeat(24))
+    if (invoice.tax > 0) {
+      lines.push(`Subtotal:  ${formatCurrency(invoice.subtotal)}`)
+      lines.push(`Tax:       ${formatCurrency(invoice.tax)}`)
+    }
+    lines.push(`TOTAL DUE: ${formatCurrency(invoice.total)}`)
+
+    if (invoice.status === 'paid' && invoice.paid_at) {
+      lines.push('')
+      lines.push(`✓ Paid on ${format(new Date(invoice.paid_at), 'MMMM d, yyyy')}`)
+    }
+
+    // ── Notes ─────────────────────────────────────────────────────────────────
+    if (invoice.notes) {
+      lines.push('')
+      lines.push('Notes:')
+      lines.push(invoice.notes)
+    }
+
+    lines.push('')
+    lines.push('='.repeat(36))
+    lines.push('Thank you for your business!')
+
+    return lines.join('\n')
+  }
+
+  async function copyInvoice() {
+    const text = buildInvoiceText()
+
+    // Modern Clipboard API (requires HTTPS or localhost + user gesture)
+    if (navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(text)
+        flashCopied()
+        return
+      } catch {
+        // Fall through to legacy fallback
+      }
+    }
+
+    // Legacy execCommand fallback (deprecated but widely supported)
+    try {
+      const textarea = document.createElement('textarea')
+      textarea.value = text
+      textarea.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none'
+      document.body.appendChild(textarea)
+      textarea.focus()
+      textarea.select()
+      const ok = document.execCommand('copy')
+      document.body.removeChild(textarea)
+      if (ok) { flashCopied(); return }
+    } catch {
+      // ignore
+    }
+
+    toast.error('Unable to copy — please select and copy the invoice manually.')
+  }
+
+  function flashCopied() {
+    setCopied(true)
+    toast.success('Invoice copied successfully.')
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  // ── Loading / not-found ───────────────────────────────────────────────────
+
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950"><div className="animate-pulse text-gray-400">Loading...</div></div>
   }
@@ -120,9 +252,23 @@ export default function InvoiceDetailPage() {
             </div>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" icon={<Printer size={15} />} onClick={printInvoice}>Print</Button>
+            {/* Copy Invoice — header shortcut */}
+            <Button
+              variant="outline"
+              size="sm"
+              icon={copied ? <Check size={15} className="text-green-600" /> : <Copy size={15} />}
+              onClick={copyInvoice}
+              className={copied ? 'border-green-400 text-green-600 dark:border-green-600 dark:text-green-400' : ''}
+            >
+              <span className="hidden sm:inline">{copied ? 'Copied!' : 'Copy'}</span>
+            </Button>
+            <Button variant="outline" size="sm" icon={<Printer size={15} />} onClick={printInvoice}>
+              <span className="hidden sm:inline">Print</span>
+            </Button>
             {invoice.status !== 'paid' && invoice.status !== 'void' && (
-              <Button size="sm" icon={<DollarSign size={15} />} onClick={() => setMarkPaidOpen(true)}>Mark Paid</Button>
+              <Button size="sm" icon={<DollarSign size={15} />} onClick={() => setMarkPaidOpen(true)}>
+                <span className="hidden sm:inline">Mark Paid</span>
+              </Button>
             )}
           </div>
         </div>
@@ -132,20 +278,20 @@ export default function InvoiceDetailPage() {
         {/* Invoice Card */}
         <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 print:border-0 print:shadow-none overflow-hidden">
           {/* Invoice header */}
-          <div className="bg-green-600 print:bg-green-600 p-6 text-white">
+          <div className="bg-gray-950 p-6 text-white">
             <div className="flex items-start justify-between">
               <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <div className="w-6 h-6 bg-white/20 rounded-lg flex items-center justify-center">
-                    <span className="text-white text-xs font-bold">L</span>
-                  </div>
-                  <span className="font-bold text-lg">LawnPro</span>
-                </div>
-                <p className="text-green-100 text-sm">Professional Lawn Care</p>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/crosscut-logo.png"
+                  alt="CrossCut Lawn Care"
+                  className="h-12 w-auto mb-1.5"
+                />
+                <p className="text-orange-400 text-xs font-semibold tracking-widest uppercase">CrossCut Lawn Care</p>
               </div>
               <div className="text-right">
                 <p className="text-2xl font-bold">{invoice.invoice_number}</p>
-                <p className="text-green-100 text-sm mt-0.5">
+                <p className="text-gray-400 text-sm mt-0.5">
                   {format(new Date(invoice.created_at), 'MMMM d, yyyy')}
                 </p>
               </div>
@@ -265,42 +411,63 @@ export default function InvoiceDetailPage() {
         </div>
 
         {/* Actions */}
-        {invoice.status !== 'void' && (
-          <div className="space-y-2 print:hidden">
-            {invoice.status === 'draft' && (
-              <Button
-                variant="secondary"
-                className="w-full"
-                size="lg"
-                icon={<Send size={16} />}
-                onClick={() => setSendOpen(true)}
-              >
-                Mark as Sent
-              </Button>
-            )}
-            {invoice.status !== 'paid' && (
-              <Button
-                className="w-full"
-                size="lg"
-                icon={<CheckCircle2 size={16} />}
-                onClick={() => setMarkPaidOpen(true)}
-              >
-                Mark as Paid
-              </Button>
-            )}
-            {invoice.status !== 'paid' && (
-              <Button
-                variant="ghost"
-                className="w-full text-red-500"
-                size="sm"
-                icon={<Trash2 size={14} />}
-                onClick={voidInvoice}
-              >
-                Void Invoice
-              </Button>
-            )}
-          </div>
-        )}
+        <div className="space-y-2 print:hidden">
+          {/* Copy Invoice — prominent full-width button */}
+          <Button
+            variant="outline"
+            className={`w-full transition-all ${
+              copied
+                ? 'border-green-500 text-green-700 bg-green-50 dark:border-green-500 dark:text-green-400 dark:bg-green-900/20'
+                : ''
+            }`}
+            size="lg"
+            icon={
+              copied
+                ? <Check size={16} className="text-green-600 dark:text-green-400" />
+                : <Copy size={16} />
+            }
+            onClick={copyInvoice}
+          >
+            {copied ? 'Invoice Copied!' : 'Copy Invoice'}
+          </Button>
+
+          {invoice.status !== 'void' && (
+            <>
+              {invoice.status === 'draft' && (
+                <Button
+                  variant="secondary"
+                  className="w-full"
+                  size="lg"
+                  icon={<Send size={16} />}
+                  onClick={() => setSendOpen(true)}
+                >
+                  Mark as Sent
+                </Button>
+              )}
+              {invoice.status !== 'paid' && (
+                <Button
+                  className="w-full"
+                  size="lg"
+                  icon={<CheckCircle2 size={16} />}
+                  onClick={() => setMarkPaidOpen(true)}
+                >
+                  Mark as Paid
+                </Button>
+              )}
+              {invoice.status !== 'paid' && (
+                <Button
+                  variant="ghost"
+                  className="w-full text-red-500"
+                  size="sm"
+                  icon={<Trash2 size={14} />}
+                  onClick={voidInvoice}
+                >
+                  Void Invoice
+                </Button>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
       {/* Mark Paid Modal */}
