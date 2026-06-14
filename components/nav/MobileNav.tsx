@@ -51,9 +51,8 @@ export function MobileNav() {
 export function MobileHeader({ title }: { title: string }) {
   return (
     <header className="lg:hidden sticky top-0 z-30 flex items-center gap-3 px-4 py-3 bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800">
-      <div className="w-7 h-7 bg-green-600 rounded-lg flex items-center justify-center flex-shrink-0">
-        <span className="text-white text-xs font-bold">L</span>
-      </div>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/crosscut-logo.png" alt="CrossCut" className="w-7 h-7 rounded-lg object-cover" />
       <h1 className="text-base font-semibold text-gray-900 dark:text-white truncate">{title}</h1>
     </header>
   )

@@ -13,6 +13,7 @@ import { MobileHeader } from '@/components/nav/MobileNav'
 import { formatCurrency } from '@/lib/utils'
 import { format, isToday, isYesterday, parseISO, subDays } from 'date-fns'
 import type { Job, Employee } from '@/types'
+import { useOwnerAuth, LockedValue } from '@/contexts/OwnerAuth'
 
 type FilterPeriod = '7d' | '30d' | '90d' | 'all'
 type FilterStatus = 'all' | 'completed' | 'skipped' | 'cancelled'
@@ -107,9 +108,11 @@ function CrewAvatars({ crew, limit = 4 }: { crew: CrewEntry[]; limit?: number })
             </div>
             <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{name.split(' ')[0]}</span>
             {member.payout_amount != null && (
-              <span className="text-xs text-green-600 dark:text-green-400 font-semibold">
-                {formatCurrency(member.payout_amount)}
-              </span>
+              <LockedValue className="text-xs">
+                <span className="text-xs text-green-600 dark:text-green-400 font-semibold">
+                  {formatCurrency(member.payout_amount)}
+                </span>
+              </LockedValue>
             )}
           </div>
         )
@@ -123,6 +126,7 @@ function CrewAvatars({ crew, limit = 4 }: { crew: CrewEntry[]; limit?: number })
 
 export default function ActivityPage() {
   const supabase = createClient()
+  const { isUnlocked } = useOwnerAuth()
   const [jobs, setJobs] = useState<ActivityJob[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
@@ -298,7 +302,9 @@ export default function ActivityPage() {
             </div>
             <div className="flex items-center gap-1.5 flex-shrink-0">
               <DollarSign size={14} className="text-green-600" />
-              <span className="text-sm font-semibold text-green-600 dark:text-green-400">{formatCurrency(totalPayout)}</span>
+              <LockedValue>
+                <span className="text-sm font-semibold text-green-600 dark:text-green-400">{formatCurrency(totalPayout)}</span>
+              </LockedValue>
               <span className="text-xs text-gray-500 dark:text-gray-400">paid out</span>
             </div>
             {skippedCount > 0 && (
@@ -325,7 +331,7 @@ export default function ActivityPage() {
                     <span className="w-4 h-4 rounded-full bg-current opacity-20 flex-shrink-0" />
                     {emp.name.split(' ')[0]}
                     <span className="font-bold">{emp.count}</span>
-                    <span className="opacity-70">{formatCurrency(emp.payout)}</span>
+                    {isUnlocked && <span className="opacity-70">{formatCurrency(emp.payout)}</span>}
                   </button>
                 ))}
               </div>
@@ -371,7 +377,7 @@ export default function ActivityPage() {
                   <div className="flex-1 h-px bg-gray-200 dark:bg-gray-800" />
                   <p className="text-xs text-gray-400 dark:text-gray-600 whitespace-nowrap">
                     {dayJobs.filter((j) => j.status === 'completed').length} done
-                    {dayJobs.filter((j) => j.status === 'completed').length > 0 && (
+                    {isUnlocked && dayJobs.filter((j) => j.status === 'completed').length > 0 && (
                       <span className="text-green-600 dark:text-green-500 font-semibold ml-1">
                         · {formatCurrency(dayJobs.filter((j) => j.status === 'completed').reduce((s, j) => s + (j.payout_amount ?? 0), 0))}
                       </span>
@@ -416,7 +422,7 @@ export default function ActivityPage() {
                               )}
                             </div>
                             <div className="text-right flex-shrink-0">
-                              {job.status === 'completed' && job.payout_amount ? (
+                              {job.status === 'completed' && job.payout_amount && isUnlocked ? (
                                 <p className="text-sm font-bold text-green-600 dark:text-green-400">
                                   {formatCurrency(job.payout_amount)}
                                 </p>

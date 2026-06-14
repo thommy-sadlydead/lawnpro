@@ -4,13 +4,16 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Plus, Search, FileText, DollarSign } from 'lucide-react'
+import { Plus, Search, FileText, Zap, Send } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Badge'
 import { MobileHeader } from '@/components/nav/MobileNav'
+import { Modal } from '@/components/ui/Modal'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import type { Invoice } from '@/types'
+import { toast } from 'sonner'
+import { LockedValue } from '@/contexts/OwnerAuth'
 
 type StatusFilter = 'all' | 'draft' | 'sent' | 'paid' | 'overdue'
 
@@ -20,6 +23,8 @@ export default function InvoicesPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [sendAllOpen, setSendAllOpen] = useState(false)
+  const [sending, setSending] = useState(false)
 
   useEffect(() => {
     loadInvoices()
@@ -43,6 +48,24 @@ export default function InvoicesPage() {
       customer?.name?.toLowerCase().includes(search.toLowerCase()) ||
       inv.invoice_number.toLowerCase().includes(search.toLowerCase())
   })
+
+  // Draft invoices visible in current view
+  const draftInvoices = filtered.filter((i) => i.status === 'draft')
+
+  async function sendAllDrafts() {
+    if (draftInvoices.length === 0) return
+    setSending(true)
+    const ids = draftInvoices.map((i) => i.id)
+    const { error } = await supabase
+      .from('invoices')
+      .update({ status: 'sent', sent_at: new Date().toISOString() })
+      .in('id', ids)
+    setSending(false)
+    setSendAllOpen(false)
+    if (error) { toast.error('Failed to send invoices'); return }
+    toast.success(`${ids.length} invoice${ids.length !== 1 ? 's' : ''} marked as sent!`)
+    loadInvoices()
+  }
 
   const stats = {
     total: filtered.length,
@@ -74,9 +97,16 @@ export default function InvoicesPage() {
               className="w-full pl-9 pr-4 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500"
             />
           </div>
-          <Link href="/invoices/new">
-            <Button size="sm" icon={<Plus size={16} />}>New Invoice</Button>
-          </Link>
+          <div className="flex gap-2">
+            <Link href="/invoices/generate">
+              <Button size="sm" variant="outline" icon={<Zap size={15} />}>
+                <span className="hidden sm:inline">Generate Monthly</span>
+              </Button>
+            </Link>
+            <Link href="/invoices/new">
+              <Button size="sm" icon={<Plus size={16} />}>New Invoice</Button>
+            </Link>
+          </div>
         </div>
 
         {/* Status filter */}
@@ -104,14 +134,34 @@ export default function InvoicesPage() {
           <p className="text-xs text-gray-500 dark:text-gray-400">Total</p>
         </div>
         <div className="py-3 px-4 text-center">
-          <p className="text-base font-bold text-yellow-600 dark:text-yellow-400">{formatCurrency(stats.unpaidAmount)}</p>
+          <p className="text-base font-bold text-yellow-600 dark:text-yellow-400">
+            <LockedValue>{formatCurrency(stats.unpaidAmount)}</LockedValue>
+          </p>
           <p className="text-xs text-gray-500 dark:text-gray-400">Outstanding</p>
         </div>
         <div className="py-3 px-4 text-center">
-          <p className="text-base font-bold text-green-600 dark:text-green-400">{formatCurrency(stats.paidAmount)}</p>
+          <p className="text-base font-bold text-green-600 dark:text-green-400">
+            <LockedValue>{formatCurrency(stats.paidAmount)}</LockedValue>
+          </p>
           <p className="text-xs text-gray-500 dark:text-gray-400">Collected</p>
         </div>
       </div>
+
+      {/* Send All Drafts banner — shows when there are drafts in view */}
+      {!loading && draftInvoices.length > 0 && (
+        <div className="px-4 lg:px-6 py-3 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-200 dark:border-blue-800 flex items-center justify-between gap-3">
+          <p className="text-sm text-blue-800 dark:text-blue-300">
+            <span className="font-semibold">{draftInvoices.length}</span> draft invoice{draftInvoices.length !== 1 ? 's' : ''} ready to send
+          </p>
+          <Button
+            size="sm"
+            icon={<Send size={14} />}
+            onClick={() => setSendAllOpen(true)}
+          >
+            Send All Drafts
+          </Button>
+        </div>
+      )}
 
       {/* Invoice list */}
       <div className="p-4 lg:p-6 max-w-3xl mx-auto space-y-2">
@@ -161,6 +211,25 @@ export default function InvoicesPage() {
           })
         )}
       </div>
+      {/* Send All Drafts modal */}
+      <Modal isOpen={sendAllOpen} onClose={() => setSendAllOpen(false)} title="Send All Draft Invoices" size="sm">
+        <div className="p-5 space-y-4">
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            This will mark <span className="font-semibold text-gray-900 dark:text-white">{draftInvoices.length} invoice{draftInvoices.length !== 1 ? 's' : ''}</span> as <span className="font-semibold text-blue-600 dark:text-blue-400">Sent</span> and set today as the sent date.
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-500">
+            Email delivery is not automated — send invoices to customers manually or via your email client.
+          </p>
+          <div className="flex gap-3 pt-1">
+            <Button variant="outline" className="flex-1" onClick={() => setSendAllOpen(false)}>
+              Cancel
+            </Button>
+            <Button className="flex-1" loading={sending} icon={<Send size={15} />} onClick={sendAllDrafts}>
+              Mark {draftInvoices.length} as Sent
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

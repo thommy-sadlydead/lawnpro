@@ -13,6 +13,8 @@ import {
   Leaf,
   Activity,
   ClipboardList,
+  BarChart2,
+  Crown,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -25,6 +27,8 @@ const navItems = [
   { href: '/employees', icon: UserCheck, label: 'Employees' },
   { href: '/employee-jobs', icon: ClipboardList, label: 'Employee Jobs' },
   { href: '/invoices', icon: FileText, label: 'Invoices' },
+  { href: '/reports', icon: BarChart2, label: 'Reports' },
+  { href: '/owner', icon: Crown, label: 'Owner Dashboard' },
   { href: '/routes', icon: Map, label: 'Routes' },
 ]
 
