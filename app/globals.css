@@ -57,6 +57,15 @@ html {
   background: #374151;
 }
 
+/* Hide scrollbar visually while keeping scroll functionality */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
 /* Shake animation for wrong PIN entry */
 @keyframes shake {
   0%, 100% { transform: translateX(0); }
