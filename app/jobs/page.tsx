@@ -225,9 +225,7 @@ export default function JobsPage() {
                     <div className="text-right flex-shrink-0">
                       <StatusBadge status={job.status} />
                       {job.payout_amount && (
-                        <p className="text-xs font-semibold text-green-600 dark:text-green-400 mt-1">
-                          <LockedValue>{formatCurrency(job.payout_amount)}</LockedValue>
-                        </p>
+                        <p className="text-xs font-semibold text-green-600 dark:text-green-400 mt-1">{formatCurrency(job.payout_amount)}</p>
                       )}
                     </div>
                   </Link>
