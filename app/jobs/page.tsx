@@ -12,6 +12,7 @@ import { formatCurrency, formatDate } from '@/lib/utils'
 import type { Job } from '@/types'
 import { format, subDays } from 'date-fns'
 import { toast } from 'sonner'
+import { LockedValue } from '@/contexts/OwnerAuth'
 
 type StatusFilter = 'all' | 'pending' | 'completed' | 'skipped' | 'cancelled'
 type DateFilter = 'today' | 'week' | 'month' | 'all'
@@ -122,13 +123,18 @@ export default function JobsPage() {
           { label: 'Total', value: stats.total, color: 'text-gray-900 dark:text-white' },
           { label: 'Done', value: stats.completed, color: 'text-green-600 dark:text-green-400' },
           { label: 'Pending', value: stats.pending, color: 'text-yellow-600 dark:text-yellow-400' },
-          { label: 'Revenue', value: formatCurrency(stats.totalPayout), color: 'text-green-600 dark:text-green-400' },
         ].map(({ label, value, color }) => (
           <div key={label} className="py-2.5 px-3 text-center">
             <p className={`text-base font-bold ${color}`}>{value}</p>
             <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
           </div>
         ))}
+        <div className="py-2.5 px-3 text-center">
+          <p className="text-base font-bold text-green-600 dark:text-green-400">
+            <LockedValue>{formatCurrency(stats.totalPayout)}</LockedValue>
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">Revenue</p>
+        </div>
       </div>
 
       {/* Status filter chips */}
@@ -219,7 +225,9 @@ export default function JobsPage() {
                     <div className="text-right flex-shrink-0">
                       <StatusBadge status={job.status} />
                       {job.payout_amount && (
-                        <p className="text-xs font-semibold text-green-600 dark:text-green-400 mt-1">{formatCurrency(job.payout_amount)}</p>
+                        <p className="text-xs font-semibold text-green-600 dark:text-green-400 mt-1">
+                          <LockedValue>{formatCurrency(job.payout_amount)}</LockedValue>
+                        </p>
                       )}
                     </div>
                   </Link>
