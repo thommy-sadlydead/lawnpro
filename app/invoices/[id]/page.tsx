@@ -7,7 +7,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   ArrowLeft, CheckCircle2, Send, Printer, Trash2, DollarSign,
-  Mail, Phone, MapPin, Calendar, FileText, Copy, Check,
+  Mail, Phone, MapPin, Calendar, FileText, Copy, Check, FileDown,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/Button'
@@ -31,6 +31,7 @@ export default function InvoiceDetailPage() {
   const [paidDate, setPaidDate] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [saving, setSaving] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [pdfing, setPdfing] = useState(false)
 
   useEffect(() => {
     loadData()
@@ -213,6 +214,225 @@ export default function InvoiceDetailPage() {
     setTimeout(() => setCopied(false), 2000)
   }
 
+  // ── PDF Download ─────────────────────────────────────────────────────────
+
+  async function downloadPDF() {
+    if (!invoice) return
+    setPdfing(true)
+    try {
+      const { jsPDF } = await import('jspdf')
+      const doc = new jsPDF({ unit: 'pt', format: 'letter' })
+      const PW = 612, PH = 792
+      const ML = 40, MR = 40
+      const CW = PW - ML - MR  // 532
+
+      const O  = '#E66B1A'  // orange
+      const DK = '#111827'  // dark
+      const GN = '#16a34a'  // green
+      const LG = '#f6f7f8'  // light gray bg
+      const MG = '#e5e7eb'  // mid gray (borders)
+      const WH = '#ffffff'
+
+      const customer = (invoice as Invoice & { customer?: Customer }).customer
+
+      // ── HEADER GRAY BACKGROUND ───────────────────────────────────────
+      doc.setFillColor(LG)
+      doc.rect(0, 0, PW, 148, 'F')
+
+      // ── ORANGE CROSS LOGO ────────────────────────────────────────────
+      doc.setFillColor(O)
+      doc.rect(40, 20, 16, 64, 'F')   // vertical bar
+      doc.rect(30, 41, 36, 18, 'F')   // horizontal bar
+
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(15)
+      doc.setTextColor(DK)
+      doc.text('CROSS', 62, 48)
+      doc.text('CUT',   62, 65)
+      doc.setFont('helvetica', 'bolditalic')
+      doc.setFontSize(8)
+      doc.text('LAWN CARE', 62, 77)
+
+      // ── INVOICE TITLE (right side) ───────────────────────────────────
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(38)
+      doc.setTextColor(DK)
+      doc.text('INVOICE', PW - MR, 56, { align: 'right' })
+
+      // Date / To / Invoice # meta rows
+      const metaLX = PW - MR - 150
+      const metaVX = PW - MR - 2
+      let metaY = 78
+      const metaRows = [
+        { label: 'Date:',      value: format(new Date(invoice.created_at), 'MM/dd/yyyy') },
+        { label: 'To:',        value: customer?.name ?? '' },
+        { label: 'Invoice #:', value: invoice.invoice_number },
+      ]
+      doc.setFontSize(9)
+      for (const row of metaRows) {
+        doc.setFont('helvetica', 'bold')
+        doc.setTextColor(O)
+        doc.text(row.label, metaLX, metaY)
+        doc.setFont('helvetica', 'normal')
+        doc.setTextColor(DK)
+        doc.text(row.value, metaVX, metaY, { align: 'right' })
+        metaY += 16
+      }
+
+      // ── GREEN GRASS STRIP ────────────────────────────────────────────
+      doc.setFillColor(GN)
+      doc.rect(0, 133, PW, 12, 'F')
+
+      // ── TABLE ────────────────────────────────────────────────────────
+      const TY = 155
+      const dateColW  = 75
+      const descColW  = 300
+      const priceColW = CW - dateColW - descColW  // 157
+      const rowH = 22
+      const displayRows = Math.max(7, items.length)
+
+      // Header row backgrounds
+      doc.setFillColor(DK)
+      doc.rect(ML, TY, dateColW + descColW, 20, 'F')
+      doc.setFillColor(O)
+      doc.rect(ML + dateColW + descColW, TY, priceColW, 20, 'F')
+
+      // Header labels
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(8)
+      doc.setTextColor(WH)
+      doc.text('DATE',          ML + dateColW / 2,                        TY + 13, { align: 'center' })
+      doc.text('DESCRIPTION',   ML + dateColW + descColW / 2,             TY + 13, { align: 'center' })
+      doc.text('PRICE PER MOW', ML + dateColW + descColW + priceColW / 2, TY + 13, { align: 'center' })
+
+      // Data rows
+      for (let i = 0; i < displayRows; i++) {
+        const rowY = TY + 20 + i * rowH
+        const item = items[i]
+
+        doc.setFillColor(WH)
+        doc.rect(ML, rowY, CW, rowH, 'F')
+
+        doc.setDrawColor(MG)
+        doc.setLineWidth(0.4)
+        doc.line(ML, rowY + rowH, ML + CW, rowY + rowH)
+
+        if (item) {
+          doc.setFont('helvetica', 'normal')
+          doc.setFontSize(9)
+          doc.setTextColor(DK)
+          const dStr = item.service_date
+            ? format(new Date(item.service_date + 'T12:00:00'), 'MM/dd/yy')
+            : ''
+          doc.text(dStr,                             ML + dateColW / 2,                        rowY + 14, { align: 'center' })
+          doc.text(item.description ?? '',            ML + dateColW + 6,                        rowY + 14)
+          doc.text(formatCurrency(item.unit_price),   ML + dateColW + descColW + priceColW / 2, rowY + 14, { align: 'center' })
+        }
+      }
+
+      // Vertical dividers + outer border
+      const tableH = 20 + displayRows * rowH
+      doc.setDrawColor(MG)
+      doc.setLineWidth(0.5)
+      doc.line(ML + dateColW,            TY, ML + dateColW,            TY + tableH)
+      doc.line(ML + dateColW + descColW, TY, ML + dateColW + descColW, TY + tableH)
+      doc.rect(ML, TY, CW, tableH)
+
+      // ── TOTALS (right-aligned block) ─────────────────────────────────
+      const paidAmt = invoice.status === 'paid' ? invoice.total : 0
+      const dueAmt  = invoice.status === 'paid' ? 0 : invoice.total
+      let curY = TY + tableH + 22
+
+      doc.setFontSize(10)
+      const totalsRows = [
+        { label: 'SUBTOTAL', value: formatCurrency(invoice.subtotal ?? invoice.total), color: DK },
+        { label: 'PAID',     value: formatCurrency(paidAmt),                            color: GN },
+        { label: 'DUE',      value: formatCurrency(dueAmt),                             color: O  },
+      ]
+      for (const t of totalsRows) {
+        doc.setFont('helvetica', 'bold')
+        doc.setTextColor(t.color)
+        doc.text(t.label, PW - MR - 140, curY)
+        doc.setFont('helvetica', 'normal')
+        doc.text(t.value, PW - MR, curY, { align: 'right' })
+        curY += 18
+      }
+      curY += 14
+
+      // ── THANK YOU LINE ───────────────────────────────────────────────
+      doc.setFontSize(10)
+      doc.setFont('helvetica', 'bolditalic')
+      doc.setTextColor(O)
+      doc.text('Thank you ', ML, curY)
+      const tyW = doc.getTextWidth('Thank you ')
+      doc.setFont('helvetica', 'normal')
+      doc.setTextColor(DK)
+      doc.text('for your business!', ML + tyW, curY)
+      curY += 28
+
+      // ── PAYMENT BOX ──────────────────────────────────────────────────
+      const boxW = 232
+      const boxH = 52
+      doc.setLineWidth(1.5)
+      doc.setDrawColor(O)
+      doc.roundedRect(ML, curY, boxW, boxH, 4, 4, 'S')
+
+      const bCX    = ML + boxW / 2
+      const cText  = 'CHECK TO: CROSS CUT LAWN CARE'
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(8)
+      doc.setTextColor(DK)
+      const cW  = doc.getTextWidth(cText)
+      const lnY = curY + 17
+      doc.setLineWidth(0.7)
+      doc.setDrawColor(O)
+      doc.line(ML + 8,        lnY, bCX - cW / 2 - 5, lnY)
+      doc.text(cText, bCX, curY + 20, { align: 'center' })
+      doc.line(bCX + cW / 2 + 5, lnY, ML + boxW - 8, lnY)
+
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(9)
+      doc.setTextColor(DK)
+      doc.text('VENMO: @Crosscut-Cbrower', bCX, curY + 38, { align: 'center' })
+
+      // ── FOOTER (light gray) ───────────────────────────────────────────
+      const FY = PH - 50
+      doc.setFillColor(LG)
+      doc.rect(0, FY, PW, 30, 'F')
+
+      const c1x = PW / 6, c2x = PW / 2, c3x = (5 * PW) / 6
+      const ftY = FY + 13
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(8)
+      doc.setTextColor(DK)
+      doc.text('1166 JAY ROGERS CT 49696',       c1x, ftY, { align: 'center' })
+      doc.text('231-463-5080',                    c2x, ftY, { align: 'center' })
+      doc.text('RELIABLE. LOCAL. PROFESSIONAL.', c3x, ftY, { align: 'center' })
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(7)
+      doc.setTextColor(O)
+      doc.text('CROSS CUT LAWN CARE', c3x, ftY + 10, { align: 'center' })
+
+      // ── BOTTOM DARK BAND ─────────────────────────────────────────────
+      doc.setFillColor(DK)
+      doc.rect(0, PH - 20, PW, 20, 'F')
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(8)
+      doc.setTextColor(WH)
+      doc.text('THANK YOU FOR CHOOSING CROSS CUT LAWN CARE!', PW / 2, PH - 8, { align: 'center' })
+
+      // ── SAVE ──────────────────────────────────────────────────────────
+      const safeNum  = invoice.invoice_number.replace(/[^a-z0-9]/gi, '_')
+      const safeCust = (customer?.name ?? 'invoice').replace(/\s+/g, '_')
+      doc.save(`${safeNum}_${safeCust}.pdf`)
+    } catch (err) {
+      console.error('[PDF]', err)
+      toast.error('Failed to generate PDF')
+    } finally {
+      setPdfing(false)
+    }
+  }
+
   // ── Loading / not-found ───────────────────────────────────────────────────
 
   if (loading) {
@@ -261,6 +481,15 @@ export default function InvoiceDetailPage() {
               className={copied ? 'border-green-400 text-green-600 dark:border-green-600 dark:text-green-400' : ''}
             >
               <span className="hidden sm:inline">{copied ? 'Copied!' : 'Copy'}</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              icon={<FileDown size={15} />}
+              onClick={downloadPDF}
+              loading={pdfing}
+            >
+              <span className="hidden sm:inline">PDF</span>
             </Button>
             <Button variant="outline" size="sm" icon={<Printer size={15} />} onClick={printInvoice}>
               <span className="hidden sm:inline">Print</span>
@@ -412,24 +641,35 @@ export default function InvoiceDetailPage() {
 
         {/* Actions */}
         <div className="space-y-2 print:hidden">
-          {/* Copy Invoice — prominent full-width button */}
-          <Button
-            variant="outline"
-            className={`w-full transition-all ${
-              copied
-                ? 'border-green-500 text-green-700 bg-green-50 dark:border-green-500 dark:text-green-400 dark:bg-green-900/20'
-                : ''
-            }`}
-            size="lg"
-            icon={
-              copied
-                ? <Check size={16} className="text-green-600 dark:text-green-400" />
-                : <Copy size={16} />
-            }
-            onClick={copyInvoice}
-          >
-            {copied ? 'Invoice Copied!' : 'Copy Invoice'}
-          </Button>
+          {/* Copy + Download PDF side-by-side */}
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              variant="outline"
+              className={`transition-all ${
+                copied
+                  ? 'border-green-500 text-green-700 bg-green-50 dark:border-green-500 dark:text-green-400 dark:bg-green-900/20'
+                  : ''
+              }`}
+              size="lg"
+              icon={
+                copied
+                  ? <Check size={16} className="text-green-600 dark:text-green-400" />
+                  : <Copy size={16} />
+              }
+              onClick={copyInvoice}
+            >
+              {copied ? 'Copied!' : 'Copy Invoice'}
+            </Button>
+            <Button
+              variant="outline"
+              size="lg"
+              icon={<FileDown size={16} />}
+              onClick={downloadPDF}
+              loading={pdfing}
+            >
+              Download PDF
+            </Button>
+          </div>
 
           {invoice.status !== 'void' && (
             <>
