@@ -223,261 +223,73 @@ export default function InvoiceDetailPage() {
       const { jsPDF } = await import('jspdf')
       const doc = new jsPDF({ unit: 'pt', format: 'letter' })
       const PW = 612, PH = 792
-      const ML = 40, MR = 40
-      const CW = PW - ML - MR  // 532
 
-      const O   = '#E66B1A'  // brand orange
-      const DK  = '#111827'  // near-black
-      const GN  = '#16a34a'  // green (paid label)
-      const DGN = '#166534'  // dark green (CHECK TO text)
-      const LG  = '#f3f4f6'  // light gray footer
-      const MG  = '#d1d5db'  // border gray
-      const WH  = '#ffffff'
+      const O  = '#E66B1A'
+      const DK = '#111827'
 
       const customer = (invoice as Invoice & { customer?: Customer }).customer
 
-      // ── WHITE HEADER BACKGROUND ──────────────────────────────────────
-      doc.setFillColor(WH)
-      doc.rect(0, 0, PW, 215, 'F')
+      // ── LOAD TEMPLATE AS BACKGROUND ───────────────────────────────────
+      const resp    = await fetch('/invoice-bg.png')
+      const blob    = await resp.blob()
+      const dataUrl = await new Promise<string>((resolve) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(reader.result as string)
+        reader.readAsDataURL(blob)
+      })
+      doc.addImage(dataUrl, 'PNG', 0, 0, PW, PH)
 
-      // ── LARGE ORANGE CROSS ───────────────────────────────────────────
-      // Vertical bar
-      doc.setFillColor(O)
-      doc.roundedRect(197, 12, 36, 168, 10, 10, 'F')
-      // Horizontal bar (starts after "CUT" text ~x130)
-      doc.roundedRect(128, 76, 180, 36, 10, 10, 'F')
-
-      // ── CROSS / CUT / LAWN CARE TEXT ─────────────────────────────────
-      doc.setFont('helvetica', 'bold')
-      doc.setFontSize(28)
-      doc.setTextColor(DK)
-      doc.text('CROSS', ML, 68)
-      doc.text('CUT',   ML, 100)
-      doc.setFont('helvetica', 'normal')
+      // ── DATE + TO (right header) ──────────────────────────────────────
       doc.setFontSize(11)
-      doc.text('LAWN CARE', 254, 168)
-
-      // ── INVOICE TITLE (right) ─────────────────────────────────────────
       doc.setFont('helvetica', 'bold')
-      doc.setFontSize(64)
+      doc.setTextColor(O)
+      doc.text('Date:', 393, 120)
+      doc.setFont('helvetica', 'normal')
       doc.setTextColor(DK)
-      doc.text('INVOICE', PW - MR, 90, { align: 'right' })
-
-      // Date + To (right side, below INVOICE)
-      const mLX = 375
-      let mY = 128
-      doc.setFontSize(12)
+      doc.text(format(new Date(invoice.created_at), 'MMMM d, yyyy'), 438, 120)
 
       doc.setFont('helvetica', 'bold')
       doc.setTextColor(O)
-      doc.text('Date:', mLX, mY)
+      doc.text('To:', 393, 152)
       doc.setFont('helvetica', 'normal')
       doc.setTextColor(DK)
-      doc.text(format(new Date(invoice.created_at), 'MMMM d, yyyy'), mLX + 46, mY)
+      doc.text(customer?.name ?? '', 420, 152)
 
-      mY += 34
-      doc.setFont('helvetica', 'bold')
-      doc.setTextColor(O)
-      doc.text('To:', mLX, mY)
-      doc.setFont('helvetica', 'normal')
-      doc.setTextColor(DK)
-      doc.text(customer?.name ?? '', mLX + 30, mY)
-
-      // ── GRASS STRIP (layered greens for depth) ────────────────────────
-      doc.setFillColor('#14532d')
-      doc.rect(0, 196, PW, 22, 'F')
-      doc.setFillColor('#15803d')
-      doc.rect(0, 196, PW, 16, 'F')
-      doc.setFillColor('#16a34a')
-      doc.rect(0, 196, PW, 10, 'F')
-      doc.setFillColor('#22c55e')
-      doc.rect(0, 196, PW, 5, 'F')
-
-      // ── TABLE ─────────────────────────────────────────────────────────
-      const TY = 228
-      const dateColW  = 90
-      const descColW  = 290
-      const priceColW = CW - dateColW - descColW   // 152
-      const rowH      = 30
-      const displayRows = Math.max(7, items.length)
-
-      // Header
-      doc.setFillColor(DK)
-      doc.rect(ML, TY, dateColW + descColW, 26, 'F')
-      doc.setFillColor(O)
-      doc.rect(ML + dateColW + descColW, TY, priceColW, 26, 'F')
-
-      doc.setFont('helvetica', 'bold')
-      doc.setFontSize(9)
-      doc.setTextColor(WH)
-      doc.text('DATE',          ML + dateColW / 2,                        TY + 17, { align: 'center' })
-      doc.text('DESCRIPTION',   ML + dateColW + descColW / 2,             TY + 17, { align: 'center' })
-      doc.text('PRICE PER MOW', ML + dateColW + descColW + priceColW / 2, TY + 17, { align: 'center' })
-
-      // Data rows
-      for (let i = 0; i < displayRows; i++) {
-        const rowY = TY + 26 + i * rowH
-        const item = items[i]
-
-        doc.setFillColor(WH)
-        doc.rect(ML, rowY, CW, rowH, 'F')
-
-        // Dashed row separator
-        doc.setDrawColor(MG)
-        doc.setLineWidth(0.5)
-        doc.setLineDashPattern([2, 3], 0)
-        doc.line(ML, rowY + rowH, ML + CW, rowY + rowH)
-        doc.setLineDashPattern([], 0)
-
-        if (item) {
-          doc.setFont('helvetica', 'normal')
-          doc.setFontSize(11)
-          doc.setTextColor(DK)
-          const dStr = item.service_date
-            ? format(new Date(item.service_date + 'T12:00:00'), 'M/d')
-            : ''
-          doc.text(dStr,                            ML + dateColW / 2,                        rowY + 20, { align: 'center' })
-          doc.text(item.description ?? '',           ML + dateColW + 12,                       rowY + 20)
-          doc.text(formatCurrency(item.unit_price),  ML + dateColW + descColW + priceColW / 2, rowY + 20, { align: 'center' })
-        }
-      }
-
-      // Vertical dividers + outer border
-      const tableH = 26 + displayRows * rowH
-      doc.setDrawColor(MG)
-      doc.setLineWidth(0.6)
-      doc.setLineDashPattern([], 0)
-      doc.line(ML + dateColW,            TY, ML + dateColW,            TY + tableH)
-      doc.line(ML + dateColW + descColW, TY, ML + dateColW + descColW, TY + tableH)
-      doc.rect(ML, TY, CW, tableH)
-
-      // ── TOTALS (bordered rows, right-aligned block) ───────────────────
-      const paidAmt    = invoice.status === 'paid' ? invoice.total : 0
-      const dueAmt     = invoice.status === 'paid' ? 0 : invoice.total
-      const totStartX  = ML + dateColW + descColW - 80   // start 80pt into desc col
-      const totBoxW    = ML + CW - totStartX
-      const totRowH    = 30
-      let totY = TY + tableH
-
-      const totalsRows = [
-        { label: 'SUBTOTAL', value: formatCurrency(invoice.subtotal ?? invoice.total), lc: DK, vc: DK },
-        { label: 'PAID',     value: formatCurrency(paidAmt),                           lc: GN, vc: O  },
-        { label: 'DUE',      value: formatCurrency(dueAmt),                            lc: O,  vc: O  },
-      ]
-      for (const t of totalsRows) {
-        doc.setFillColor(WH)
-        doc.rect(totStartX, totY, totBoxW, totRowH, 'F')
-        doc.setDrawColor(MG)
-        doc.setLineWidth(0.8)
-        doc.rect(totStartX, totY, totBoxW, totRowH)
-
-        doc.setFont('helvetica', 'bold')
-        doc.setFontSize(11)
-        doc.setTextColor(t.lc)
-        doc.text(t.label, totStartX + 14, totY + 20)
-
-        doc.setTextColor(t.vc)
-        doc.text(t.value, totStartX + totBoxW - 12, totY + 20, { align: 'right' })
-        totY += totRowH
-      }
-
-      // ── THANK YOU ─────────────────────────────────────────────────────
-      let curY = totY + 36
-      doc.setFontSize(22)
-      doc.setFont('helvetica', 'bolditalic')
-      doc.setTextColor(O)
-      doc.text('Thank you', ML, curY)
-      const tyW = doc.getTextWidth('Thank you')
-      doc.setFont('helvetica', 'bold')
-      doc.setFontSize(16)
-      doc.setTextColor(DK)
-      doc.text(' for your business!', ML + tyW, curY)
-      curY += 36
-
-      // ── PAYMENT BOX (full width, orange border) ───────────────────────
-      const boxW = CW
-      const boxH = 72
-      doc.setLineWidth(2)
-      doc.setDrawColor(O)
-      doc.roundedRect(ML, curY, boxW, boxH, 8, 8, 'S')
-
-      const bCX = ML + boxW / 2
-
-      // "CHECK TO:  " dark + "CROSS CUT LAWN CARE" dark green
-      doc.setFont('helvetica', 'bold')
-      doc.setFontSize(11)
-      const p1 = 'CHECK TO:  '
-      const p2 = 'CROSS CUT LAWN CARE'
-      const w1 = doc.getTextWidth(p1)
-      const w2 = doc.getTextWidth(p2)
-      const txtW = w1 + w2
-      const txtX = bCX - txtW / 2
-      const chkY = curY + 30
-
-      doc.setLineWidth(1.2)
-      doc.setDrawColor(O)
-      doc.line(ML + 18, chkY - 4, txtX - 10, chkY - 4)
-      doc.setTextColor(DK)
-      doc.text(p1, txtX, chkY)
-      doc.setTextColor(DGN)
-      doc.text(p2, txtX + w1, chkY)
-      doc.line(txtX + txtW + 10, chkY - 4, ML + boxW - 18, chkY - 4)
+      // ── TABLE ROWS (max 7 to fit template) ───────────────────────────
+      const dateCX  = 53    // center of DATE col
+      const descX   = 116   // left of DESCRIPTION col
+      const priceCX = 523   // center of PRICE col
+      const row1Y   = 262   // first row baseline
+      const rowH    = 31    // row height
 
       doc.setFont('helvetica', 'normal')
-      doc.setFontSize(12)
-      doc.setTextColor(DK)
-      doc.text('VENMO: @Crosscut-Cbrower', bCX, curY + 54, { align: 'center' })
-
-      // ── FOOTER (light gray, 3 columns + icons) ────────────────────────
-      const FY = PH - 82
-      doc.setFillColor(LG)
-      doc.rect(0, FY, PW, 56, 'F')
-
-      const col1 = PW * 0.18
-      const col2 = PW * 0.50
-      const col3 = PW * 0.80
-      const ftY  = FY + 24
-
-      // Vertical separators
-      doc.setDrawColor('#9ca3af')
-      doc.setLineWidth(0.8)
-      doc.line(PW * 0.363, FY + 10, PW * 0.363, FY + 46)
-      doc.line(PW * 0.637, FY + 10, PW * 0.637, FY + 46)
-
-      // Col 1 — location pin + address
-      doc.setFillColor(O)
-      doc.circle(col1 - 52, ftY - 5, 7, 'F')
-      doc.setFillColor(WH)
-      doc.circle(col1 - 52, ftY - 5, 3, 'F')
-      doc.setFont('helvetica', 'bold')
-      doc.setFontSize(9)
-      doc.setTextColor(DK)
-      doc.text('1166 JAYROGERS CT 49696', col1 - 40, ftY + 2)
-
-      // Col 2 — phone circle + number
-      doc.setFillColor(O)
-      doc.circle(col2 - 46, ftY - 5, 7, 'F')
-      doc.setFont('helvetica', 'bold')
-      doc.setFontSize(9)
-      doc.setTextColor(DK)
-      doc.text('231-463-5080', col2 - 34, ftY + 2)
-
-      // Col 3 — tagline
-      doc.setFont('helvetica', 'bold')
-      doc.setFontSize(9)
-      doc.setTextColor(DK)
-      doc.text('RELIABLE. LOCAL. PROFESSIONAL.', col3, ftY - 4, { align: 'center' })
       doc.setFontSize(10)
-      doc.setTextColor(O)
-      doc.text('CROSS CUT LAWN CARE', col3, ftY + 13, { align: 'center' })
+      doc.setTextColor(DK)
 
-      // ── BOTTOM DARK BAND ──────────────────────────────────────────────
-      doc.setFillColor(DK)
-      doc.rect(0, PH - 26, PW, 26, 'F')
+      const rowCount = Math.min(items.length, 7)
+      for (let i = 0; i < rowCount; i++) {
+        const item = items[i]
+        const y = row1Y + i * rowH
+        const dStr = item.service_date
+          ? format(new Date(item.service_date + 'T12:00:00'), 'M/d')
+          : ''
+        doc.text(dStr,                           dateCX,  y, { align: 'center' })
+        doc.text(item.description ?? '',          descX,   y)
+        doc.text(formatCurrency(item.unit_price), priceCX, y, { align: 'center' })
+      }
+
+      // ── TOTALS VALUES (overlaid on template labels) ───────────────────
+      const paidAmt = invoice.status === 'paid' ? invoice.total : 0
+      const dueAmt  = invoice.status === 'paid' ? 0 : invoice.total
+      const valX    = 605
+
       doc.setFont('helvetica', 'bold')
-      doc.setFontSize(9)
-      doc.setTextColor(WH)
-      doc.text('THANK YOU FOR CHOOSING CROSS CUT LAWN CARE!', PW / 2, PH - 10, { align: 'center' })
+      doc.setFontSize(11)
+      doc.setTextColor(DK)
+      doc.text(formatCurrency(invoice.subtotal ?? invoice.total), valX, 475, { align: 'right' })
+      doc.setTextColor(O)
+      doc.text(formatCurrency(paidAmt), valX, 503, { align: 'right' })
+      doc.text(formatCurrency(dueAmt),  valX, 531, { align: 'right' })
 
       // ── SAVE ──────────────────────────────────────────────────────────
       const safeNum  = invoice.invoice_number.replace(/[^a-z0-9]/gi, '_')
