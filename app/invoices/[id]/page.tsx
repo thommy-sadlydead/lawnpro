@@ -240,6 +240,10 @@ export default function InvoiceDetailPage() {
       doc.addImage(dataUrl, 'PNG', 0, 0, PW, PH)
 
       // ── DATE + TO (right header) ──────────────────────────────────────
+      // Cover the template's orange date underline with white before writing text
+      doc.setFillColor('#FFFFFF')
+      doc.rect(428, 112, 152, 12, 'F')
+
       doc.setFontSize(11)
       doc.setFont('helvetica', 'bold')
       doc.setTextColor(O)
@@ -256,10 +260,12 @@ export default function InvoiceDetailPage() {
       doc.text(customer?.name ?? '', 420, 152)
 
       // ── TABLE ROWS (max 7 to fit template) ───────────────────────────
-      const dateCX  = 53    // center of DATE col
-      const descX   = 116   // left of DESCRIPTION col
-      const priceCX = 523   // center of PRICE col
-      const row1Y   = 288   // first row baseline (header band ends at ~267pt, row center offset)
+      // Column positions measured from template pixels:
+      //   Table left=27pt, DATE/DESC sep=121pt, DESC/PRICE sep=436pt, right=576pt
+      const dateCX  = 74    // center of DATE col  (27+121)/2
+      const descX   = 130   // left edge of DESCRIPTION col + 9pt margin
+      const priceCX = 506   // center of PRICE col  (436+576)/2
+      const row1Y   = 288   // first row baseline
       const rowH    = 32    // row height
 
       doc.setFont('helvetica', 'normal')
@@ -279,17 +285,19 @@ export default function InvoiceDetailPage() {
       }
 
       // ── TOTALS VALUES (overlaid on template labels) ───────────────────
+      // Box spans x=336–576pt; right-align values at x=568 (8pt inside right border)
+      // Row baselines from pixel scan: SUBTOTAL≈477, PAID≈506, DUE≈537
       const paidAmt = invoice.status === 'paid' ? invoice.total : 0
       const dueAmt  = invoice.status === 'paid' ? 0 : invoice.total
-      const valX    = 605
+      const valX    = 568
 
       doc.setFont('helvetica', 'bold')
       doc.setFontSize(11)
       doc.setTextColor(DK)
-      doc.text(formatCurrency(invoice.subtotal ?? invoice.total), valX, 475, { align: 'right' })
+      doc.text(formatCurrency(invoice.subtotal ?? invoice.total), valX, 477, { align: 'right' })
       doc.setTextColor(O)
-      doc.text(formatCurrency(paidAmt), valX, 503, { align: 'right' })
-      doc.text(formatCurrency(dueAmt),  valX, 531, { align: 'right' })
+      doc.text(formatCurrency(paidAmt), valX, 506, { align: 'right' })
+      doc.text(formatCurrency(dueAmt),  valX, 537, { align: 'right' })
 
       // ── SAVE ──────────────────────────────────────────────────────────
       const safeNum  = invoice.invoice_number.replace(/[^a-z0-9]/gi, '_')
