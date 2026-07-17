@@ -259,8 +259,8 @@ export default function InvoiceDetailPage() {
       const dateCX  = 53    // center of DATE col
       const descX   = 116   // left of DESCRIPTION col
       const priceCX = 523   // center of PRICE col
-      const row1Y   = 262   // first row baseline
-      const rowH    = 31    // row height
+      const row1Y   = 288   // first row baseline (header band ends at ~267pt, row center offset)
+      const rowH    = 32    // row height
 
       doc.setFont('helvetica', 'normal')
       doc.setFontSize(10)
