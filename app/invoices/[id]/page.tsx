@@ -17,7 +17,7 @@ import { Input } from '@/components/ui/Input'
 import { formatCurrency, formatDate, formatPhone } from '@/lib/utils'
 import type { Invoice, InvoiceItem, Customer } from '@/types'
 import { toast } from 'sonner'
-import { format } from 'date-fns'
+import { format, parseISO } from 'date-fns'
 
 export default function InvoiceDetailPage() {
   const { id } = useParams()
@@ -101,7 +101,7 @@ export default function InvoiceDetailPage() {
     lines.push(`Invoice:  ${invoice.invoice_number}`)
     lines.push(`Date:     ${format(new Date(invoice.created_at), 'MMMM d, yyyy')}`)
     if (invoice.due_date) {
-      lines.push(`Due:      ${format(new Date(invoice.due_date), 'MMMM d, yyyy')}`)
+      lines.push(`Due:      ${format(parseISO(invoice.due_date), 'MMMM d, yyyy')}`)
     }
     lines.push(`Status:   ${invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}`)
     lines.push('')
@@ -130,7 +130,7 @@ export default function InvoiceDetailPage() {
       lines.push('-'.repeat(24))
       for (const item of items) {
         const date = item.service_date
-          ? format(new Date(item.service_date), 'MMM d')
+          ? format(parseISO(item.service_date), 'MMM d')
           : null
         const qtyPrice =
           item.quantity > 1
@@ -277,7 +277,7 @@ export default function InvoiceDetailPage() {
         const item = items[i]
         const y = row1Y + i * rowH
         const dStr = item.service_date
-          ? format(new Date(item.service_date + 'T12:00:00'), 'M/d')
+          ? format(parseISO(item.service_date), 'M/d')
           : ''
         doc.text(dStr,                           dateCX,  y, { align: 'center' })
         doc.text(item.description ?? '',          descX,   y)
@@ -444,7 +444,7 @@ export default function InvoiceDetailPage() {
               </div>
               <div>
                 <p className="text-xs text-gray-400 uppercase tracking-wide">Due Date</p>
-                <p className="text-sm font-medium text-gray-900 dark:text-white mt-0.5">{invoice.due_date ? format(new Date(invoice.due_date), 'MMM d, yyyy') : '—'}</p>
+                <p className="text-sm font-medium text-gray-900 dark:text-white mt-0.5">{invoice.due_date ? format(parseISO(invoice.due_date), 'MMM d, yyyy') : '—'}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-400 uppercase tracking-wide">Status</p>
@@ -469,7 +469,7 @@ export default function InvoiceDetailPage() {
                     <tr key={item.id}>
                       <td className="py-3 text-sm text-gray-900 dark:text-white">{item.description}</td>
                       <td className="py-3 text-sm text-gray-500 dark:text-gray-400 text-center">
-                        {item.service_date ? format(new Date(item.service_date), 'MMM d') : '—'}
+                        {item.service_date ? format(parseISO(item.service_date), 'MMM d') : '—'}
                       </td>
                       <td className="py-3 text-sm text-gray-500 dark:text-gray-400 text-center">{item.quantity}</td>
                       <td className="py-3 text-sm text-gray-900 dark:text-white text-right">{formatCurrency(item.unit_price)}</td>

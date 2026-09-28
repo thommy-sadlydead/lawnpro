@@ -12,7 +12,7 @@ import { Input, Select, Textarea } from '@/components/ui/Input'
 import { formatCurrency, generateInvoiceNumber } from '@/lib/utils'
 import type { Customer, Job } from '@/types'
 import { toast } from 'sonner'
-import { format, addDays } from 'date-fns'
+import { format, addDays, parseISO } from 'date-fns'
 
 interface LineItem {
   description: string
@@ -205,7 +205,7 @@ function NewInvoiceForm() {
                   }`}
                 >
                   {lineItems.some((li) => li.job_id === job.id) ? '✓ ' : '+ '}
-                  {format(new Date(job.scheduled_date), 'MMM d')}
+                  {format(parseISO(job.scheduled_date), 'MMM d')}
                   {job.payout_amount && ` · ${formatCurrency(job.payout_amount)}`}
                 </button>
               ))}
