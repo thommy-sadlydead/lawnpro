@@ -32,9 +32,7 @@ function NewInvoiceForm() {
   const [selectedCustomerId, setSelectedCustomerId] = useState(searchParams.get('customer') ?? '')
   const [dueDate, setDueDate] = useState(format(addDays(new Date(), 14), 'yyyy-MM-dd'))
   const [notes, setNotes] = useState('')
-  const [lineItems, setLineItems] = useState<LineItem[]>([
-    { description: 'Lawn Mowing Service', quantity: 1, unit_price: 0, service_date: '' },
-  ])
+  const [lineItems, setLineItems] = useState<LineItem[]>([])
   const [loading, setLoading] = useState(false)
   const [loadingJobs, setLoadingJobs] = useState(false)
 
@@ -46,10 +44,6 @@ function NewInvoiceForm() {
   useEffect(() => {
     if (selectedCustomerId) {
       loadCustomerJobs(selectedCustomerId)
-      const customer = customers.find((c) => c.id === selectedCustomerId)
-      if (customer?.price && lineItems.length === 1 && lineItems[0].unit_price === 0) {
-        setLineItems([{ ...lineItems[0], unit_price: customer.price }])
-      }
     }
   }, [selectedCustomerId])
 
@@ -79,7 +73,10 @@ function NewInvoiceForm() {
     if (exists) return
 
     setLineItems((items) => [
-      ...items.filter((i) => i.description !== 'Lawn Mowing Service' || i.unit_price !== 0),
+      // Drop any blank placeholder row (no job link, no date filled in).
+      // The old filter keyed on unit_price === 0 which broke once the customer
+      // price was auto-filled — the placeholder would stay alongside the real item.
+      ...items.filter((i) => i.job_id != null || i.service_date !== ''),
       {
         description: 'Lawn Mowing Service',
         quantity: 1,
@@ -107,18 +104,25 @@ function NewInvoiceForm() {
 
   async function createInvoice() {
     if (!selectedCustomerId) { toast.error('Select a customer'); return }
-    if (lineItems.length === 0) { toast.error('Add at least one line item'); return }
-    if (lineItems.some((i) => !i.description)) { toast.error('All items need a description'); return }
+
+    // Only save items that are linked to a real job OR have an explicit service date.
+    // This prevents blank placeholder rows from being written to invoice_items.
+    const validItems = lineItems.filter((i) => i.job_id != null || i.service_date !== '')
+
+    if (validItems.length === 0) { toast.error('Add at least one service — use the completed jobs above or click Add Item'); return }
+    if (validItems.some((i) => !i.description)) { toast.error('All items need a description'); return }
 
     setLoading(true)
     const invoiceNumber = generateInvoiceNumber()
 
+    const itemSubtotal = validItems.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0)
+
     const { data: invoice, error } = await supabase.from('invoices').insert({
       customer_id: selectedCustomerId,
       invoice_number: invoiceNumber,
-      subtotal,
+      subtotal: itemSubtotal,
       tax: 0,
-      total,
+      total: itemSubtotal,
       due_date: dueDate || null,
       notes: notes || null,
       status: 'draft',
@@ -126,8 +130,8 @@ function NewInvoiceForm() {
 
     if (error) { toast.error('Failed to create invoice'); setLoading(false); return }
 
-    // Insert line items
-    const items = lineItems.map((item) => ({
+    // Insert only real service items
+    const items = validItems.map((item) => ({
       invoice_id: invoice.id,
       job_id: item.job_id ?? null,
       description: item.description,
@@ -219,6 +223,12 @@ function NewInvoiceForm() {
             <h2 className="font-semibold text-gray-900 dark:text-white text-sm uppercase tracking-wide">Line Items</h2>
             <Button variant="outline" size="sm" icon={<Plus size={14} />} onClick={addLineItem}>Add Item</Button>
           </div>
+
+          {lineItems.length === 0 && (
+            <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">
+              No services added yet — use the completed jobs above or click Add Item.
+            </p>
+          )}
 
           <div className="space-y-3">
             {lineItems.map((item, idx) => (
