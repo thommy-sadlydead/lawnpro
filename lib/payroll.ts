@@ -12,12 +12,11 @@
  *   Employee Pay Per Mow is ignored.
  *
  * Rule 3 — Owner + one or more employees
- *   Employee Pay Per Mow is split equally among all non-owner workers.
- *   Owner receives: job price − total employee pay.
+ *   Each non-owner worker receives a flat $15.
+ *   Owner receives: job price − ($15 × number of non-owner workers).
  *
  * Edge cases:
  *   - Null job price → treated as 0
- *   - Null employee_pay_per_mow in Rule 3 → employees get $0, owner gets 100%
  *   - Multiple non-owners in Rule 2 → 50% split evenly among them
  */
 
@@ -110,9 +109,9 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
 
   // ── Rule 3: Owner + employees ─────────────────────────────────────────────
   if (owner && nonOwners.length > 0) {
-    const totalEmpPay = employeePayPerMow
-    const perEmployee = nonOwners.length > 0 ? round2(totalEmpPay / nonOwners.length) : 0
-    const ownerPay = round2(price - totalEmpPay)
+    const perEmployee = 15
+    const totalEmpPay = round2(perEmployee * nonOwners.length)
+    const ownerPay    = round2(price - totalEmpPay)
 
     payouts.set(owner.id, ownerPay)
     for (const emp of nonOwners) {
@@ -121,8 +120,8 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
 
     const employeeDesc =
       nonOwners.length === 1
-        ? `${nonOwners[0].name} receives ${money(perEmployee)} (property rate)`
-        : `${nonOwners.length} employees each receive ${money(perEmployee)} (${money(totalEmpPay)} split)`
+        ? `${nonOwners[0].name} receives ${money(perEmployee)}`
+        : `${nonOwners.length} employees each receive ${money(perEmployee)} (${money(totalEmpPay)} total)`
 
     return {
       payouts,

@@ -216,11 +216,6 @@ export function CompleteJobModal({
                 ⚠ No job price set on this customer — set it on the customer page for accurate payroll.
               </p>
             )}
-            {payrollResult.rule === 3 && employeePayPerMow == null && (
-              <p className="text-xs text-amber-600 dark:text-amber-400">
-                ⚠ No Employee Pay Per Mow set for this property — edit the customer to set it.
-              </p>
-            )}
           </div>
         )}
 
