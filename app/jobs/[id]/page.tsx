@@ -22,6 +22,7 @@ import { formatCurrency, formatDate } from '@/lib/utils'
 import type { Job, Employee } from '@/types'
 import { toast } from 'sonner'
 import { format, parseISO } from 'date-fns'
+import { scheduleNextRecurring } from '@/lib/scheduling'
 
 // ── Local type helpers ────────────────────────────────────────────────────────
 
@@ -286,6 +287,20 @@ export default function JobDetailPage() {
           return
         }
       }
+    }
+
+    // Auto-schedule the next recurring job when the status transitions TO completed.
+    // Skip when the job was already completed (user is just editing notes/crew).
+    if (editForm.status === 'completed' && job.status !== 'completed' && completedAt) {
+      await scheduleNextRecurring({
+        supabase,
+        completedAt,
+        customerId: job.customer_id,
+        serviceFrequency: (job.customer?.service_frequency ?? null) as import('@/types').ServiceFrequency | null,
+        assignedEmployeeId: editForm.assigned_employee_id || job.assigned_employee_id || null,
+        scheduleId: job.schedule_id,
+        jobPrice: job.customer?.price ?? null,
+      })
     }
 
     setSavingEdit(false)

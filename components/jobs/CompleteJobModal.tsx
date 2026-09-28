@@ -2,13 +2,14 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { CheckCircle2 } from 'lucide-react'
-import { addDays, addMonths, format, parseISO } from 'date-fns'
+import { format } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Textarea } from '@/components/ui/Input'
 import { CrewPicker, type CrewMember } from '@/components/ui/CrewPicker'
 import { calculatePayroll, ruleColor } from '@/lib/payroll'
+import { scheduleNextRecurring } from '@/lib/scheduling'
 import type { Employee, ServiceFrequency } from '@/types'
 import { toast } from 'sonner'
 
@@ -115,69 +116,15 @@ export function CompleteJobModal({
   // the future, we skip creation to prevent duplicates.
 
   async function autoScheduleNext(completedAt: string) {
-    if (
-      !serviceFrequency ||
-      serviceFrequency === 'custom' ||
-      serviceFrequency === 'one-time'
-    ) {
-      return
-    }
-
-    const completionDate = parseISO(completedAt.split('T')[0]) // date-only, no TZ shift
-    let nextDate: Date
-
-    switch (serviceFrequency) {
-      case 'weekly':
-        nextDate = addDays(completionDate, 7)
-        break
-      case 'biweekly':
-        nextDate = addDays(completionDate, 14)
-        break
-      case 'monthly':
-        nextDate = addMonths(completionDate, 1)
-        break
-      default:
-        return
-    }
-
-    const nextDateStr = format(nextDate, 'yyyy-MM-dd')
-    const todayStr = format(new Date(), 'yyyy-MM-dd')
-
-    // Check for an existing future pending/rescheduled job for this customer
-    const { data: existing } = await supabase
-      .from('jobs')
-      .select('id')
-      .eq('customer_id', customerId)
-      .in('status', ['pending', 'rescheduled'])
-      .gte('scheduled_date', todayStr)
-      .limit(1)
-
-    if (existing && existing.length > 0) {
-      // A future job already exists — skip silently
-      return
-    }
-
-    const { error } = await supabase.from('jobs').insert({
-      customer_id: customerId,
-      assigned_employee_id: assignedEmployeeId ?? null,
-      schedule_id: scheduleId ?? null,
-      scheduled_date: nextDateStr,
-      status: 'pending',
-      payout_amount: jobPrice ?? null,
+    await scheduleNextRecurring({
+      supabase,
+      completedAt,
+      customerId,
+      serviceFrequency,
+      assignedEmployeeId,
+      scheduleId,
+      jobPrice,
     })
-
-    if (!error) {
-      const freqLabel =
-        serviceFrequency === 'weekly'
-          ? 'weekly'
-          : serviceFrequency === 'biweekly'
-          ? 'bi-weekly'
-          : 'monthly'
-      toast.success(
-        `Next ${freqLabel} job scheduled for ${format(nextDate, 'EEE, MMM d')}`,
-        { duration: 4000 }
-      )
-    }
   }
 
   // ── Completion save ──────────────────────────────────────────────────────────
